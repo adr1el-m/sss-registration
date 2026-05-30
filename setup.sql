@@ -4,64 +4,58 @@ USE sss_db;
 CREATE TABLE IF NOT EXISTS Registrant_Table (
     SS_Number VARCHAR(20) PRIMARY KEY,
     Registrant_Name VARCHAR(100) NOT NULL,
-    Date_of_Birth DATE,
-    Sex ENUM('Male', 'Female', 'Other'),
-    Civil_Status VARCHAR(30),
+    Date_of_Birth DATE NOT NULL,
+    Sex ENUM('Male', 'Female') NOT NULL,
+    Civil_Status VARCHAR(30) NOT NULL,
     TIN VARCHAR(20),
     Nationality VARCHAR(50),
     Religion VARCHAR(50),
     POB VARCHAR(100),
-    Home_Address TEXT,
+    Home_Address TEXT NOT NULL,
     Mobile_Number VARCHAR(20),
     Email_Address VARCHAR(100),
     Telephone_Number VARCHAR(20),
     Father_Name VARCHAR(100),
-    Mother_Maiden_Name VARCHAR(100),
-    Employement_Type VARCHAR(50)
+    Mother_Maiden_Name VARCHAR(100) NOT NULL,
+    Employement_Type ENUM('NWS', 'SE', 'OFW') NOT NULL 
 );
 
 CREATE TABLE IF NOT EXISTS Spouse_Table (
-    SS_Number VARCHAR(20),
-    Spouse_Name VARCHAR(100),
+    SS_Number VARCHAR(20) PRIMARY KEY,
+    Spouse_Name VARCHAR(100) NOT NULL,
     Spouse_DOB DATE,
     FOREIGN KEY (SS_Number) REFERENCES Registrant_Table(SS_Number) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Beneficiaries_Table (
     Ben_ID INT AUTO_INCREMENT PRIMARY KEY,
-    Ben_Name VARCHAR(100),
-    Ben_DOB DATE
-);
-
-CREATE TABLE IF NOT EXISTS Designations_Table (
-    SS_Number VARCHAR(20),
-    Ben_ID INT,
+    SS_Number VARCHAR(20) NOT NULL,
+    Ben_Name VARCHAR(100) NOT NULL,
+    Ben_DOB DATE,
     Ben_Relationship VARCHAR(50),
-    PRIMARY KEY (SS_Number, Ben_ID),
-    FOREIGN KEY (SS_Number) REFERENCES Registrant_Table(SS_Number) ON DELETE CASCADE,
-    FOREIGN KEY (Ben_ID) REFERENCES Beneficiaries_Table(Ben_ID) ON DELETE CASCADE
+    FOREIGN KEY (SS_Number) REFERENCES Registrant_Table(SS_Number) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Self_Employed_Table (
     SS_Number VARCHAR(20) PRIMARY KEY,
-    SE_Profession VARCHAR(100),
-    SE_Year_Started YEAR,
-    SE_Monthly_Earnings DECIMAL(15, 2),
+    SE_Profession VARCHAR(100) NOT NULL,
+    SE_Year_Started YEAR NOT NULL,
+    SE_Monthly_Earnings DECIMAL(15, 2) NOT NULL,
     FOREIGN KEY (SS_Number) REFERENCES Registrant_Table(SS_Number) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS OFW_Table (
     SS_Number VARCHAR(20) PRIMARY KEY,
-    OFW_Foreign_Address TEXT,
-    OFW_Monthly_Earnings DECIMAL(15, 2),
-    OFW_FlexiFund_Flag BOOLEAN,
+    OFW_Foreign_Address TEXT NOT NULL,
+    OFW_Monthly_Earnings DECIMAL(15, 2) NOT NULL,
+    OFW_FlexiFund_Flag BOOLEAN NOT NULL,
     FOREIGN KEY (SS_Number) REFERENCES Registrant_Table(SS_Number) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Non_Working_Spouse_Table (
     SS_Number VARCHAR(20) PRIMARY KEY,
-    WS_SSN VARCHAR(20),
-    WS_Income DECIMAL(15, 2),
+    WS_SSN VARCHAR(20) NOT NULL,
+    WS_Income DECIMAL(15, 2) NOT NULL,
     FOREIGN KEY (SS_Number) REFERENCES Registrant_Table(SS_Number) ON DELETE CASCADE
 );
 
@@ -73,23 +67,14 @@ INSERT INTO Registrant_Table (SS_Number, Registrant_Name, Date_of_Birth, Sex, Ci
 ('07-0091345-2', 'Lorenzo R. Chismoso', '1980-04-01', 'Male', 'Married', '275-809-124', 'Filipino', 'Born Again Christian', 'Marinduque Provincial Hospital, Boac, Marinduque', 'Dr.Maximo Flores, Pasig, Metro Manila', '09215897991', 'chismososilorenzo@gmail.com', '(02) 7455-2100', 'San Roque V. Chismoso', 'Yasha Horilunsk R. Riyansk', 'OFW'),
 ('12-7080091-1', 'Edna Josefina T. Rodriguez', '1973-01-01', 'Female', 'Married', '587-901-800', 'Filipino', 'Muslim', 'Tobacco, Albay', '8th Ave, Grace Park East, Manila, Metro Manila', '09081759800', 'josefina@yahoo.com', '(02) 3588-1200', 'Takahada R. Takehashi', 'Edralina Santa Ana T. Maypajo', 'NWS');
 
-INSERT INTO Beneficiaries_Table (Ben_ID, Ben_Name, Ben_DOB) VALUES
-(1, 'Sasha Mae S. Jafina', '2009-04-07'),
-(2, 'Ferdy Jonnathan S. Jafina', '2011-02-19'),
-(3, 'Ferdinand Joe M. Honasan', '2000-09-09'),
-(4, 'Caroline A. Fortunado', '2007-06-26'),
-(5, 'Llana Marie Curie D. Chismoso', '2011-07-08'),
-(6, 'Sophia Vannessa D. Chismoso', '2007-03-18'),
-(7, 'Gerald G. Rodriguez', '2001-10-09');
-
-INSERT INTO Designations_Table (SS_Number, Ben_ID, Ben_Relationship) VALUES
-('02-3788924-7', 1, 'Daughter'),
-('02-3788924-7', 2, 'Son'),
-('01-0477821-4', 3, 'Friend'),
-('07-9925781-3', 4, 'Niece'),
-('07-0091345-2', 5, 'Daughter'),
-('07-0091345-2', 6, 'Daughter'),
-('12-7080091-1', 7, 'Nephew');
+INSERT INTO Beneficiaries_Table (Ben_ID, SS_Number, Ben_Name, Ben_DOB, Ben_Relationship) VALUES
+(1, '02-3788924-7', 'Sasha Mae S. Jafina', '2009-04-07', 'Daughter'),
+(2, '02-3788924-7', 'Ferdy Jonnathan S. Jafina', '2011-02-19', 'Son'),
+(3, '01-0477821-4', 'Ferdinand Joe M. Honasan', '2000-09-09', 'Friend'),
+(4, '07-9925781-3', 'Caroline A. Fortunado', '2007-06-26', 'Niece'),
+(5, '07-0091345-2', 'Llana Marie Curie D. Chismoso', '2011-07-08', 'Daughter'),
+(6, '07-0091345-2', 'Sophia Vannessa D. Chismoso', '2007-03-18', 'Daughter'),
+(7, '12-7080091-1', 'Gerald G. Rodriguez', '2001-10-09', 'Nephew');
 
 INSERT INTO Self_Employed_Table (SS_Number, SE_Profession, SE_Year_Started, SE_Monthly_Earnings) VALUES
 ('02-3788924-7', 'Human Resource Employee', 2010, 23000.00),
