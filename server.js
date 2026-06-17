@@ -314,4 +314,9 @@ app.delete('/api/nws/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(port, () => console.log(`Server running at http://localhost:${port}`));
+// Only listen when not running on Vercel
+if (!process.env.VERCEL) {
+    app.listen(port, () => console.log(`Server running at http://localhost:${port}`));
+}
+
+module.exports = app;
