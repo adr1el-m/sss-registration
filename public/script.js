@@ -18,7 +18,6 @@ const qualityList = document.getElementById('quality-list');
 const reviewModal = document.getElementById('review-modal');
 const reviewContent = document.getElementById('review-content');
 const reviewConfirm = document.getElementById('review-confirm');
-const mobileDemo = document.getElementById('mobile-demo');
 const archivePage = document.getElementById('archive-page');
 const detailModal = document.getElementById('detail-modal');
 const detailContent = document.getElementById('detail-content');
@@ -1054,11 +1053,6 @@ function printForm() {
     printOfficialRecord(payloadToRecord(payload));
 }
 
-function toggleMobileDemo() {
-    document.body.classList.toggle('mobile-demo-mode');
-    mobileDemo.textContent = document.body.classList.contains('mobile-demo-mode') ? 'Desktop View' : 'Mobile Demo';
-}
-
 function openArchivePage() {
     recordStatusFilter.value = 'archived';
     loadRecords(recordSearch.value).catch(error => showStatus(error.message, 'error'));
@@ -1134,7 +1128,6 @@ document.getElementById('reset-form').addEventListener('click', resetForm);
 document.getElementById('random-fill').addEventListener('click', fillRandomInfo);
 document.getElementById('print-form').addEventListener('click', printForm);
 archivePage.addEventListener('click', openArchivePage);
-mobileDemo.addEventListener('click', toggleMobileDemo);
 themeToggle.addEventListener('click', () => {
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
