@@ -3,18 +3,30 @@ const recordList = document.getElementById('record-list');
 const formStatus = document.getElementById('form-status');
 const recordSearch = document.getElementById('record-search');
 const recordStatusFilter = document.getElementById('record-status-filter');
+const recordEmploymentFilter = document.getElementById('record-employment-filter');
+const recordSexFilter = document.getElementById('record-sex-filter');
+const recordCivilFilter = document.getElementById('record-civil-filter');
+const recordQualityFilter = document.getElementById('record-quality-filter');
 const childrenList = document.getElementById('children-list');
 const otherBeneficiariesList = document.getElementById('other-beneficiaries-list');
 const themeToggle = document.getElementById('theme-toggle');
 const themeToggleLabel = document.getElementById('theme-toggle-label');
 const validationErrors = document.getElementById('validation-errors');
+const qualityPanel = document.getElementById('quality-panel');
+const qualitySummary = document.getElementById('quality-summary');
+const qualityList = document.getElementById('quality-list');
 const reviewModal = document.getElementById('review-modal');
 const reviewContent = document.getElementById('review-content');
 const reviewConfirm = document.getElementById('review-confirm');
 const mobileDemo = document.getElementById('mobile-demo');
+const archivePage = document.getElementById('archive-page');
+const detailModal = document.getElementById('detail-modal');
+const detailContent = document.getElementById('detail-content');
+const officialPrint = document.getElementById('official-print');
 
 let editingId = null;
 let pendingSave = null;
+let currentPreviewRecord = null;
 
 const firstNames = ['Miguel', 'Maria', 'Juan', 'Teresa', 'Paolo', 'Isabella', 'Rafael', 'Carmen', 'Luisa', 'Antonio', 'Elena', 'Jose'];
 const lastNames = ['Santos', 'Reyes', 'Dela Cruz', 'Garcia', 'Torres', 'Navarro', 'Bautista', 'Mendoza', 'Flores', 'Ramos', 'Castillo', 'Gonzales'];
@@ -58,6 +70,53 @@ function formatDate(inputValue) {
         year: 'numeric',
         month: 'short',
         day: 'numeric'
+    });
+}
+
+function formatDateTime(inputValue) {
+    if (!inputValue) return 'Not tracked';
+    return new Date(inputValue).toLocaleString('en-PH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+function digitsOnly(inputValue) {
+    return String(inputValue || '').replace(/\D/g, '');
+}
+
+function groupDigits(inputValue, groups) {
+    const digits = digitsOnly(inputValue).slice(0, groups.reduce((sum, group) => sum + group, 0));
+    const output = [];
+    let index = 0;
+    groups.forEach(group => {
+        const chunk = digits.slice(index, index + group);
+        if (chunk) output.push(chunk);
+        index += group;
+    });
+    return output.join('-');
+}
+
+function formatSsNumber(inputValue) {
+    return groupDigits(inputValue, [2, 7, 1]);
+}
+
+function formatTinNumber(inputValue) {
+    return groupDigits(inputValue, [3, 3, 3, 3]);
+}
+
+function formatMobileNumber(inputValue) {
+    return digitsOnly(inputValue).slice(0, 11);
+}
+
+function money(inputValue) {
+    const numeric = Number(inputValue || 0);
+    return numeric.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
     });
 }
 
@@ -151,7 +210,10 @@ function createPersonRow(type, data = {}) {
         ` : ''}
         <button type="button" class="icon-btn" aria-label="Remove row">Remove</button>
     `;
-    row.querySelector('button').addEventListener('click', () => row.remove());
+    row.querySelector('button').addEventListener('click', () => {
+        row.remove();
+        updateQualityPanel();
+    });
     return row;
 }
 
@@ -323,6 +385,110 @@ function validatePayload(payload) {
     return errors;
 }
 
+function recordToPayload(record) {
+    const r = record.registrant || {};
+    const se = record.employmentDetails?.selfEmployed || {};
+    const ofw = record.employmentDetails?.ofw || {};
+    const nws = record.employmentDetails?.nonWorkingSpouse || {};
+    return {
+        registrant: {
+            SS_Number: r.SS_Number,
+            Registrant_Name: r.Registrant_Name,
+            Date_of_Birth: isoDate(r.Date_of_Birth),
+            Sex: r.Sex,
+            Civil_Status: r.Civil_Status,
+            TIN: r.TIN,
+            Nationality: r.Nationality,
+            Religion: r.Religion,
+            POB: r.POB,
+            Home_Address: r.Home_Address,
+            Mobile_Number: r.Mobile_Number,
+            Email_Address: r.Email_Address,
+            Telephone_Number: r.Telephone_Number,
+            Father_Name: r.Father_Name,
+            Mother_Maiden_Name: r.Mother_Maiden_Name,
+            Employment_Type: r.Employment_Type
+        },
+        spouse: {
+            Spouse_Name: record.spouse?.Spouse_Name || '',
+            Spouse_DOB: isoDate(record.spouse?.Spouse_DOB)
+        },
+        children: record.children || [],
+        otherBeneficiaries: record.otherBeneficiaries || [],
+        employmentDetails: {
+            SE_Profession: se.SE_Profession,
+            SE_Year_Started: se.SE_Year_Started,
+            SE_Monthly_Earnings: se.SE_Monthly_Earnings,
+            OFW_Foreign_Address: ofw.OFW_Foreign_Address,
+            OFW_Monthly_Earnings: ofw.OFW_Monthly_Earnings,
+            OFW_FlexiFund_Flag: ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1,
+            WS_SSN: nws.WS_SSN,
+            WS_Income: nws.WS_Income
+        }
+    };
+}
+
+function payloadToRecord(payload) {
+    const employmentType = payload.registrant.Employment_Type;
+    return {
+        registrant: payload.registrant,
+        spouse: payload.spouse.Spouse_Name || payload.spouse.Spouse_DOB ? {
+            Spouse_Name: payload.spouse.Spouse_Name,
+            Spouse_DOB: payload.spouse.Spouse_DOB
+        } : null,
+        children: payload.children || [],
+        otherBeneficiaries: payload.otherBeneficiaries || [],
+        employmentDetails: {
+            selfEmployed: employmentType === 'SE' ? {
+                SE_Profession: payload.employmentDetails.SE_Profession,
+                SE_Year_Started: payload.employmentDetails.SE_Year_Started,
+                SE_Monthly_Earnings: payload.employmentDetails.SE_Monthly_Earnings
+            } : null,
+            ofw: employmentType === 'OFW' ? {
+                OFW_Foreign_Address: payload.employmentDetails.OFW_Foreign_Address,
+                OFW_Monthly_Earnings: payload.employmentDetails.OFW_Monthly_Earnings,
+                OFW_FlexiFund_Flag: payload.employmentDetails.OFW_FlexiFund_Flag ? 'Y' : 'N'
+            } : null,
+            nonWorkingSpouse: employmentType === 'NWS' ? {
+                WS_SSN: payload.employmentDetails.WS_SSN,
+                WS_Income: payload.employmentDetails.WS_Income
+            } : null
+        }
+    };
+}
+
+function computeQualityWarnings(payload) {
+    const warnings = [];
+    const r = payload.registrant;
+    const hasDependents = Boolean(payload.spouse.Spouse_Name || payload.children.length || payload.otherBeneficiaries.length);
+
+    if (!r.TIN) warnings.push('TIN is blank.');
+    if (!r.Mobile_Number) warnings.push('Mobile number is blank.');
+    if (!r.Email_Address) warnings.push('Email address is blank.');
+    if (!hasDependents) warnings.push('No spouse, child, or beneficiary has been added.');
+    if (r.Civil_Status === 'M' && !payload.spouse.Spouse_Name) warnings.push('Civil status is married but spouse name is blank.');
+    if (r.Employment_Type === 'SE' && !payload.employmentDetails.SE_Profession) warnings.push('Self-employed profession or business is blank.');
+    if (r.Employment_Type === 'SE' && !payload.employmentDetails.SE_Monthly_Earnings) warnings.push('Self-employed monthly earnings are blank.');
+    if (r.Employment_Type === 'OFW' && !payload.employmentDetails.OFW_Foreign_Address) warnings.push('OFW foreign address is blank.');
+    if (r.Employment_Type === 'OFW' && !payload.employmentDetails.OFW_Monthly_Earnings) warnings.push('OFW monthly earnings are blank.');
+    if (r.Employment_Type === 'NWS' && !payload.employmentDetails.WS_SSN) warnings.push('Working spouse SS number is blank.');
+    if (r.Employment_Type === 'NWS' && !payload.employmentDetails.WS_Income) warnings.push('Working spouse monthly income is blank.');
+
+    return warnings;
+}
+
+function updateQualityPanel() {
+    if (!qualityPanel) return;
+    const warnings = computeQualityWarnings(buildPayload());
+    const isClean = warnings.length === 0;
+    qualityPanel.classList.toggle('quality-ok', isClean);
+    qualityPanel.classList.toggle('quality-warning', !isClean);
+    qualitySummary.textContent = isClean ? 'Quality OK' : `${warnings.length} item${warnings.length === 1 ? '' : 's'} need review`;
+    qualityList.innerHTML = isClean
+        ? '<li>All key quality checks passed.</li>'
+        : warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('');
+}
+
 async function checkDuplicateSsNumber(ssNumber) {
     if (!ssNumber || editingId) return false;
     const result = await requestJson(`/api/e1-records/check/${encodeURIComponent(ssNumber)}`);
@@ -378,6 +544,13 @@ async function loadSummary() {
     document.getElementById('summary-nws').textContent = summary.nonWorkingSpouse;
     document.getElementById('summary-beneficiaries').textContent = summary.totalBeneficiaries;
     document.getElementById('summary-archived').textContent = summary.archived;
+    document.getElementById('summary-quality').textContent = summary.needsReview;
+}
+
+function updateRecordsMode() {
+    const isArchivePage = recordStatusFilter.value === 'archived';
+    document.body.classList.toggle('archive-page-mode', isArchivePage);
+    document.getElementById('records-title').textContent = isArchivePage ? 'Archive Page' : 'Saved Records';
 }
 
 async function loadRecords(search = '') {
@@ -385,6 +558,11 @@ async function loadRecords(search = '') {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
     if (status) params.set('status', status);
+    if (recordEmploymentFilter.value) params.set('employment', recordEmploymentFilter.value);
+    if (recordSexFilter.value) params.set('sex', recordSexFilter.value);
+    if (recordCivilFilter.value) params.set('civil', recordCivilFilter.value);
+    if (recordQualityFilter.value) params.set('quality', recordQualityFilter.value);
+    updateRecordsMode();
     const records = await requestJson(`/api/e1-records?${params.toString()}`);
     document.getElementById('record-count').textContent = `${records.length} ${records.length === 1 ? 'record' : 'records'}`;
     recordList.innerHTML = '';
@@ -392,6 +570,7 @@ async function loadRecords(search = '') {
 
     records.forEach(record => {
         const archived = Number(record.Is_Archived) === 1;
+        const needsReview = Number(record.Quality_Issues) > 0;
         const item = document.createElement('article');
         item.className = `record-card${archived ? ' is-archived' : ''}`;
         item.innerHTML = `
@@ -400,20 +579,29 @@ async function loadRecords(search = '') {
                     <strong>${escapeHtml(record.Registrant_Name)}</strong>
                     <span>${escapeHtml(record.SS_Number)}</span>
                 </div>
-                <span class="status-pill">${archived ? 'Archived' : 'Active'}</span>
+                <div class="pill-stack">
+                    <span class="status-pill">${archived ? 'Archived' : 'Active'}</span>
+                    <span class="status-pill ${needsReview ? 'pill-warning' : 'pill-success'}">${needsReview ? 'Needs Review' : 'Quality OK'}</span>
+                </div>
             </div>
             <dl>
                 <div><dt>DOB</dt><dd>${formatDate(record.Date_of_Birth)}</dd></div>
                 <div><dt>Sex</dt><dd>${formatSex(record.Sex)}</dd></div>
                 <div><dt>Status</dt><dd>${formatCivilStatus(record.Civil_Status)}</dd></div>
                 <div><dt>Type</dt><dd>${employmentLabel(record.Employment_Type)}</dd></div>
+                <div><dt>Beneficiaries</dt><dd>${Number(record.Beneficiary_Count || 0)}</dd></div>
+                <div><dt>Updated</dt><dd>${formatDate(record.Updated_At)}</dd></div>
             </dl>
             <div class="record-actions">
+                <button type="button" class="btn btn-secondary" data-action="view">View</button>
+                <button type="button" class="btn btn-secondary" data-action="pdf">PDF</button>
                 ${archived
                     ? '<button type="button" class="btn btn-secondary" data-action="restore">Restore</button>'
                     : '<button type="button" class="btn btn-secondary" data-action="edit">Edit</button><button type="button" class="btn btn-danger" data-action="delete">Archive</button>'}
             </div>
         `;
+        item.querySelector('[data-action="view"]').addEventListener('click', () => openRecordPreview(record.SS_Number));
+        item.querySelector('[data-action="pdf"]').addEventListener('click', () => printRecordById(record.SS_Number));
         item.querySelector('[data-action="edit"]')?.addEventListener('click', () => editRecord(record.SS_Number));
         item.querySelector('[data-action="delete"]')?.addEventListener('click', () => archiveRecord(record.SS_Number));
         item.querySelector('[data-action="restore"]')?.addEventListener('click', () => restoreRecord(record.SS_Number));
@@ -438,6 +626,7 @@ function resetForm() {
     otherBeneficiariesList.innerHTML = '';
     ensureInitialRows();
     updateEmploymentPanels();
+    updateQualityPanel();
     clearValidation();
     showStatus('');
 }
@@ -496,8 +685,270 @@ function fillRandomInfo() {
     setValue('WS_Income', randomMoney(20000, 120000));
 
     updateEmploymentPanels();
+    updateQualityPanel();
     clearValidation();
     showStatus('Random sample data filled in. Review it, then save when ready.', 'success');
+}
+
+function detailRow(label, fieldValue) {
+    return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(fieldValue || '-')}</dd></div>`;
+}
+
+function renderPeopleList(people, emptyLabel) {
+    if (!people.length) return `<p class="muted-note">${escapeHtml(emptyLabel)}</p>`;
+    return `
+        <ul class="detail-list">
+            ${people.map(person => `
+                <li>
+                    <strong>${escapeHtml(person.Ben_Name || '-')}</strong>
+                    <span>${escapeHtml(person.Ben_Relationship || 'Child')} · ${formatDate(person.Ben_DOB)}</span>
+                </li>
+            `).join('')}
+        </ul>
+    `;
+}
+
+function renderEmploymentPreview(record) {
+    const r = record.registrant || {};
+    const details = record.employmentDetails || {};
+    if (r.Employment_Type === 'OFW') {
+        const ofw = details.ofw || {};
+        return `
+            <dl>
+                ${detailRow('Foreign Address', ofw.OFW_Foreign_Address)}
+                ${detailRow('Monthly Earnings', `PHP ${money(ofw.OFW_Monthly_Earnings)}`)}
+                ${detailRow('Flexi-Fund', ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1 ? 'Yes' : 'No')}
+            </dl>
+        `;
+    }
+    if (r.Employment_Type === 'NWS') {
+        const nws = details.nonWorkingSpouse || {};
+        return `
+            <dl>
+                ${detailRow('Working Spouse SS/CRN', nws.WS_SSN)}
+                ${detailRow('Working Spouse Income', `PHP ${money(nws.WS_Income)}`)}
+            </dl>
+        `;
+    }
+    const se = details.selfEmployed || {};
+    return `
+        <dl>
+            ${detailRow('Profession/Business', se.SE_Profession)}
+            ${detailRow('Year Started', se.SE_Year_Started)}
+            ${detailRow('Monthly Earnings', `PHP ${money(se.SE_Monthly_Earnings)}`)}
+        </dl>
+    `;
+}
+
+function renderQualityPreview(payload) {
+    const warnings = computeQualityWarnings(payload);
+    if (!warnings.length) {
+        return '<div class="quality-result good">All key data quality checks passed.</div>';
+    }
+    return `
+        <div class="quality-result needs-work">
+            <strong>${warnings.length} item${warnings.length === 1 ? '' : 's'} need review</strong>
+            <ul>${warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>
+        </div>
+    `;
+}
+
+function renderRecordPreview(record) {
+    const r = record.registrant || {};
+    const payload = recordToPayload(record);
+    const archived = Number(r.Is_Archived) === 1;
+    document.getElementById('detail-title').textContent = `${r.Registrant_Name || 'E-1 Record'} · ${r.SS_Number || ''}`;
+    detailContent.innerHTML = `
+        <section class="detail-hero">
+            <div>
+                <strong>${escapeHtml(r.Registrant_Name || '-')}</strong>
+                <span>${escapeHtml(r.SS_Number || '-')}</span>
+            </div>
+            <span class="status-pill">${archived ? 'Archived' : 'Active'}</span>
+        </section>
+        <section>
+            <h3>Personal Data</h3>
+            <dl>
+                ${detailRow('Date of Birth', formatDate(r.Date_of_Birth))}
+                ${detailRow('Sex', formatSex(r.Sex))}
+                ${detailRow('Civil Status', formatCivilStatus(r.Civil_Status))}
+                ${detailRow('TIN', r.TIN)}
+                ${detailRow('Nationality', r.Nationality)}
+                ${detailRow('Religion', r.Religion)}
+                ${detailRow('Place of Birth', r.POB)}
+                ${detailRow('Employment Type', employmentLabel(r.Employment_Type))}
+            </dl>
+        </section>
+        <section>
+            <h3>Contact and Address</h3>
+            <dl>
+                ${detailRow('Mobile', r.Mobile_Number)}
+                ${detailRow('Email', r.Email_Address)}
+                ${detailRow('Telephone', r.Telephone_Number)}
+            </dl>
+            <p>${escapeHtml(r.Home_Address || '-')}</p>
+        </section>
+        <section>
+            <h3>Dependents and Beneficiaries</h3>
+            <dl>
+                ${detailRow('Spouse', record.spouse?.Spouse_Name)}
+                ${detailRow('Spouse DOB', formatDate(record.spouse?.Spouse_DOB))}
+                ${detailRow('Children', record.children?.length || 0)}
+                ${detailRow('Other Beneficiaries', record.otherBeneficiaries?.length || 0)}
+            </dl>
+            ${renderPeopleList(record.children || [], 'No children listed.')}
+            ${renderPeopleList(record.otherBeneficiaries || [], 'No other beneficiaries listed.')}
+        </section>
+        <section>
+            <h3>Section C Details</h3>
+            ${renderEmploymentPreview(record)}
+        </section>
+        <section>
+            <h3>Audit Fields</h3>
+            <dl>
+                ${detailRow('Created', formatDateTime(r.Created_At))}
+                ${detailRow('Updated', formatDateTime(r.Updated_At))}
+                ${detailRow('Archived', formatDateTime(r.Archived_At))}
+            </dl>
+        </section>
+        <section>
+            <h3>Data Quality Checker</h3>
+            ${renderQualityPreview(payload)}
+        </section>
+    `;
+}
+
+async function openRecordPreview(ssNumber) {
+    currentPreviewRecord = await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}`);
+    renderRecordPreview(currentPreviewRecord);
+    detailModal.classList.remove('hidden');
+}
+
+function closeDetailModal() {
+    detailModal.classList.add('hidden');
+    currentPreviewRecord = null;
+}
+
+function officialDate(inputValue) {
+    const date = isoDate(inputValue);
+    if (!date) return '';
+    const [year, month, day] = date.split('-');
+    return `${month}/${day}/${year}`;
+}
+
+function officialCell(label, fieldValue, className = '') {
+    return `
+        <div class="official-cell ${className}">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(fieldValue || '')}</strong>
+        </div>
+    `;
+}
+
+function officialCheckbox(label, checked) {
+    return `<span class="official-check"><b>${checked ? 'X' : ''}</b>${escapeHtml(label)}</span>`;
+}
+
+function officialBeneficiaryRows(people, count, labelPrefix) {
+    return Array.from({ length: count }, (_, index) => {
+        const person = people[index] || {};
+        return `
+            <div class="official-beneficiary-row">
+                <span>${labelPrefix ? `${labelPrefix} ${index + 1}.` : `${index + 1}.`}</span>
+                <strong>${escapeHtml(person.Ben_Name || '')}</strong>
+                <em>${escapeHtml(person.Ben_Relationship || (labelPrefix ? 'Child' : ''))}</em>
+                <small>${escapeHtml(officialDate(person.Ben_DOB))}</small>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderOfficialE1(record) {
+    const r = record.registrant || {};
+    const details = record.employmentDetails || {};
+    const se = details.selfEmployed || {};
+    const ofw = details.ofw || {};
+    const nws = details.nonWorkingSpouse || {};
+    return `
+        <div class="official-sheet">
+            <header class="official-header">
+                <div class="official-logo">E-1</div>
+                <div>
+                    <p>Republic of the Philippines</p>
+                    <h1>Social Security System</h1>
+                    <h2>Personal Record</h2>
+                    <strong>For Issuance of SS Number</strong>
+                </div>
+                <div class="official-ss">
+                    <span>SS Number</span>
+                    <strong>${escapeHtml(r.SS_Number || '')}</strong>
+                </div>
+            </header>
+            <p class="official-note">System-generated E-1 preview. D. Certification and Part II intentionally omitted.</p>
+            <h3>Part I - To Be Filled Out By The Registrant</h3>
+            <h4>A. Personal Data</h4>
+            <div class="official-grid">
+                ${officialCell('Name', r.Registrant_Name, 'wide-3')}
+                ${officialCell('Date of Birth (MM/DD/YYYY)', officialDate(r.Date_of_Birth))}
+                ${officialCell('Sex', `${r.Sex === 'M' ? 'Male' : ''}${r.Sex === 'F' ? 'Female' : ''}`)}
+                ${officialCell('Civil Status', formatCivilStatus(r.Civil_Status), 'wide-2')}
+                ${officialCell('Tax Identification Number', r.TIN)}
+                ${officialCell('Nationality', r.Nationality)}
+                ${officialCell('Religion', r.Religion)}
+                ${officialCell('Place of Birth', r.POB, 'wide-2')}
+                ${officialCell('Home Address', r.Home_Address, 'wide-4')}
+                ${officialCell('Mobile/Cellphone Number', r.Mobile_Number)}
+                ${officialCell('Email Address', r.Email_Address, 'wide-2')}
+                ${officialCell('Telephone Number', r.Telephone_Number)}
+                ${officialCell('Father', r.Father_Name, 'wide-2')}
+                ${officialCell("Mother's Maiden Name", r.Mother_Maiden_Name, 'wide-2')}
+            </div>
+            <h4>B. Dependent(s) / Beneficiary/ies</h4>
+            <div class="official-grid">
+                ${officialCell('Spouse', record.spouse?.Spouse_Name, 'wide-3')}
+                ${officialCell('Date of Birth', officialDate(record.spouse?.Spouse_DOB))}
+            </div>
+            ${officialBeneficiaryRows(record.children || [], 5, 'Child')}
+            <div class="official-beneficiary-title">Other Beneficiary/ies</div>
+            ${officialBeneficiaryRows(record.otherBeneficiaries || [], 2, '')}
+            <h4>C. For Self-Employed / Overseas Filipino Worker / Non-Working Spouse</h4>
+            <div class="official-three">
+                <section>
+                    <strong>Self-Employed</strong>
+                    <p>Profession/Business: ${escapeHtml(se.SE_Profession || '')}</p>
+                    <p>Year Started: ${escapeHtml(se.SE_Year_Started || '')}</p>
+                    <p>Monthly Earnings: PHP ${escapeHtml(money(se.SE_Monthly_Earnings))}</p>
+                    ${officialCheckbox('Selected', r.Employment_Type === 'SE')}
+                </section>
+                <section>
+                    <strong>Overseas Filipino Worker</strong>
+                    <p>Foreign Address: ${escapeHtml(ofw.OFW_Foreign_Address || '')}</p>
+                    <p>Monthly Earnings: PHP ${escapeHtml(money(ofw.OFW_Monthly_Earnings))}</p>
+                    <p>Flexi-Fund: ${ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1 ? 'Yes' : 'No'}</p>
+                    ${officialCheckbox('Selected', r.Employment_Type === 'OFW')}
+                </section>
+                <section>
+                    <strong>Non-Working Spouse</strong>
+                    <p>Working Spouse SS/CRN: ${escapeHtml(nws.WS_SSN || '')}</p>
+                    <p>Working Spouse Income: PHP ${escapeHtml(money(nws.WS_Income))}</p>
+                    ${officialCheckbox('Selected', r.Employment_Type === 'NWS')}
+                </section>
+            </div>
+        </div>
+    `;
+}
+
+function printOfficialRecord(record) {
+    officialPrint.innerHTML = renderOfficialE1(record);
+    officialPrint.classList.remove('hidden');
+    document.body.classList.add('printing-official');
+    showStatus('Opening official E-1 print sheet. Choose Save as PDF to export.', 'neutral');
+    setTimeout(() => window.print(), 80);
+}
+
+async function printRecordById(ssNumber) {
+    const record = await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}`);
+    printOfficialRecord(record);
 }
 
 async function editRecord(ssNumber) {
@@ -543,6 +994,7 @@ async function editRecord(ssNumber) {
     document.getElementById('form-mode').textContent = `Editing ${r.SS_Number}`;
     document.getElementById('save-record').textContent = 'Update E-1 Record';
     updateEmploymentPanels();
+    updateQualityPanel();
     clearValidation();
     showStatus('Loaded record for editing.', 'success');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -585,13 +1037,45 @@ async function saveConfirmedRecord() {
 }
 
 function printForm() {
-    showStatus('Opening print dialog. Choose Save as PDF to export.', 'neutral');
-    window.print();
+    const payload = buildPayload();
+    printOfficialRecord(payloadToRecord(payload));
 }
 
 function toggleMobileDemo() {
     document.body.classList.toggle('mobile-demo-mode');
     mobileDemo.textContent = document.body.classList.contains('mobile-demo-mode') ? 'Desktop View' : 'Mobile Demo';
+}
+
+function openArchivePage() {
+    recordStatusFilter.value = 'archived';
+    loadRecords(recordSearch.value).catch(error => showStatus(error.message, 'error'));
+    document.querySelector('.records-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearRecordFilters() {
+    recordStatusFilter.value = 'active';
+    recordEmploymentFilter.value = '';
+    recordSexFilter.value = '';
+    recordCivilFilter.value = '';
+    recordQualityFilter.value = '';
+    recordSearch.value = '';
+    loadRecords('').catch(error => showStatus(error.message, 'error'));
+}
+
+function attachSmartFormatting() {
+    [
+        ['SS_Number', formatSsNumber],
+        ['WS_SSN', formatSsNumber],
+        ['TIN', formatTinNumber],
+        ['Mobile_Number', formatMobileNumber]
+    ].forEach(([id, formatter]) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.addEventListener('input', () => {
+            const formatted = formatter(input.value);
+            if (input.value !== formatted) input.value = formatted;
+        });
+    });
 }
 
 form.addEventListener('submit', async event => {
@@ -636,25 +1120,59 @@ document.getElementById('SS_Number').addEventListener('blur', async () => {
 document.getElementById('reset-form').addEventListener('click', resetForm);
 document.getElementById('random-fill').addEventListener('click', fillRandomInfo);
 document.getElementById('print-form').addEventListener('click', printForm);
+archivePage.addEventListener('click', openArchivePage);
 mobileDemo.addEventListener('click', toggleMobileDemo);
 themeToggle.addEventListener('click', () => {
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
 document.getElementById('add-child').addEventListener('click', () => {
     childrenList.appendChild(createPersonRow('child'));
+    updateQualityPanel();
 });
 document.getElementById('add-beneficiary').addEventListener('click', () => {
     otherBeneficiariesList.appendChild(createPersonRow('other'));
+    updateQualityPanel();
 });
 document.querySelectorAll('input[name="Employment_Type"]').forEach(input => {
-    input.addEventListener('change', updateEmploymentPanels);
+    input.addEventListener('change', () => {
+        updateEmploymentPanels();
+        updateQualityPanel();
+    });
 });
 recordSearch.addEventListener('input', () => loadRecords(recordSearch.value));
-recordStatusFilter.addEventListener('change', () => loadRecords(recordSearch.value));
+[
+    recordStatusFilter,
+    recordEmploymentFilter,
+    recordSexFilter,
+    recordCivilFilter,
+    recordQualityFilter
+].forEach(filter => {
+    filter.addEventListener('change', () => loadRecords(recordSearch.value));
+});
+document.getElementById('clear-record-filters').addEventListener('click', clearRecordFilters);
 document.getElementById('review-close').addEventListener('click', closeReviewModal);
 document.getElementById('review-back').addEventListener('click', closeReviewModal);
 reviewConfirm.addEventListener('click', saveConfirmedRecord);
+document.getElementById('detail-close').addEventListener('click', closeDetailModal);
+document.getElementById('detail-done').addEventListener('click', closeDetailModal);
+document.getElementById('detail-edit').addEventListener('click', () => {
+    if (!currentPreviewRecord?.registrant?.SS_Number) return;
+    const ssNumber = currentPreviewRecord.registrant.SS_Number;
+    closeDetailModal();
+    editRecord(ssNumber).catch(error => showStatus(error.message, 'error'));
+});
+document.getElementById('detail-pdf').addEventListener('click', () => {
+    if (currentPreviewRecord) printOfficialRecord(currentPreviewRecord);
+});
+form.addEventListener('input', updateQualityPanel);
+form.addEventListener('change', updateQualityPanel);
+window.addEventListener('afterprint', () => {
+    document.body.classList.remove('printing-official');
+    officialPrint.classList.add('hidden');
+    officialPrint.innerHTML = '';
+});
 
+attachSmartFormatting();
 resetForm();
 applyTheme(localStorage.getItem('sss-e1-theme') || 'light');
 refreshRecords().catch(error => showStatus(error.message, 'error'));

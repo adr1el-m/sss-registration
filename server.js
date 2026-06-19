@@ -103,6 +103,21 @@ async function getE1Record(ssNumber) {
     };
 }
 
+const qualityIssueExpression = `
+    CASE
+        WHEN NULLIF(TRIM(r.TIN), '') IS NULL
+          OR NULLIF(TRIM(r.Mobile_Number), '') IS NULL
+          OR NULLIF(TRIM(r.Email_Address), '') IS NULL
+          OR COUNT(DISTINCT b.Ben_ID) = 0
+          OR (r.Civil_Status = 'M' AND NULLIF(TRIM(MAX(sp.Spouse_Name)), '') IS NULL)
+          OR (r.Employment_Type = 'SE' AND NULLIF(TRIM(MAX(se.SE_Profession)), '') IS NULL)
+          OR (r.Employment_Type = 'OFW' AND NULLIF(TRIM(MAX(ofw.OFW_Foreign_Address)), '') IS NULL)
+          OR (r.Employment_Type = 'NWS' AND NULLIF(TRIM(MAX(nws.WS_SSN)), '') IS NULL)
+        THEN 1
+        ELSE 0
+    END
+`;
+
 async function saveE1Record(payload, existingSsNumber = null) {
     await ensureAppTables();
     const d = payload.registrant || payload;
@@ -284,21 +299,42 @@ app.get('/api/e1-records', async (req, res) => {
         await ensureAppTables();
         const search = req.query.search ? `%${req.query.search}%` : null;
         const status = req.query.status || 'active';
+        const employment = req.query.employment;
+        const sex = req.query.sex;
+        const civil = req.query.civil;
+        const quality = req.query.quality;
         let query = `
             SELECT
-                r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.Mobile_Number,
+                r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.TIN, r.Mobile_Number,
                 r.Email_Address, r.Employment_Type,
-                COUNT(b.Ben_ID) AS Beneficiary_Count,
+                COUNT(DISTINCT b.Ben_ID) AS Beneficiary_Count,
+                ${qualityIssueExpression} AS Quality_Issues,
                 COALESCE(s.Is_Archived, 0) AS Is_Archived,
                 s.Created_At, s.Updated_At, s.Archived_At
             FROM Registrant_Table r
             LEFT JOIN Beneficiaries_Table b ON b.SS_Number = r.SS_Number
+            LEFT JOIN Spouse_Table sp ON sp.SS_Number = r.SS_Number
+            LEFT JOIN Self_Employed_Table se ON se.SS_Number = r.SS_Number
+            LEFT JOIN OFW_Table ofw ON ofw.SS_Number = r.SS_Number
+            LEFT JOIN Non_Working_Spouse nws ON nws.SS_Number = r.SS_Number
             LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number`;
         const where = [];
         const params = [];
         if (search) {
-            where.push('(r.SS_Number LIKE ? OR r.Registrant_Name LIKE ? OR r.Email_Address LIKE ?)');
-            params.push(search, search, search);
+            where.push('(r.SS_Number LIKE ? OR r.Registrant_Name LIKE ? OR r.Email_Address LIKE ? OR r.Mobile_Number LIKE ?)');
+            params.push(search, search, search, search);
+        }
+        if (['SE', 'OFW', 'NWS'].includes(employment)) {
+            where.push('r.Employment_Type = ?');
+            params.push(employment);
+        }
+        if (['M', 'F'].includes(sex)) {
+            where.push('r.Sex = ?');
+            params.push(sex);
+        }
+        if (['S', 'M', 'W', 'LS', 'O'].includes(civil)) {
+            where.push('r.Civil_Status = ?');
+            params.push(civil);
         }
         if (status === 'archived') {
             where.push('COALESCE(s.Is_Archived, 0) = 1');
@@ -307,9 +343,15 @@ app.get('/api/e1-records', async (req, res) => {
         }
         if (where.length) query += ` WHERE ${where.join(' AND ')}`;
         query += `
-            GROUP BY r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status,
+            GROUP BY r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.TIN,
                      r.Mobile_Number, r.Email_Address, r.Employment_Type,
-                     s.Is_Archived, s.Created_At, s.Updated_At, s.Archived_At
+                     s.Is_Archived, s.Created_At, s.Updated_At, s.Archived_At`;
+        if (quality === 'needs-review') {
+            query += ' HAVING Quality_Issues > 0';
+        } else if (quality === 'ok') {
+            query += ' HAVING Quality_Issues = 0';
+        }
+        query += `
             ORDER BY r.SS_Number DESC`;
         const [rows] = await pool.query(query, params);
         res.json(rows);
@@ -338,13 +380,30 @@ app.get('/api/e1-records/summary', async (req, res) => {
             LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
             WHERE COALESCE(s.Is_Archived, 0) = 0
         `);
+        const [[quality]] = await pool.query(`
+            SELECT COUNT(*) AS needsReview
+            FROM (
+                SELECT r.SS_Number, ${qualityIssueExpression} AS Quality_Issues
+                FROM Registrant_Table r
+                LEFT JOIN Beneficiaries_Table b ON b.SS_Number = r.SS_Number
+                LEFT JOIN Spouse_Table sp ON sp.SS_Number = r.SS_Number
+                LEFT JOIN Self_Employed_Table se ON se.SS_Number = r.SS_Number
+                LEFT JOIN OFW_Table ofw ON ofw.SS_Number = r.SS_Number
+                LEFT JOIN Non_Working_Spouse nws ON nws.SS_Number = r.SS_Number
+                LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
+                WHERE COALESCE(s.Is_Archived, 0) = 0
+                GROUP BY r.SS_Number, r.TIN, r.Mobile_Number, r.Email_Address, r.Civil_Status, r.Employment_Type
+            ) q
+            WHERE q.Quality_Issues > 0
+        `);
         res.json({
             totalActive: Number(summary.totalActive || 0),
             archived: Number(summary.archived || 0),
             selfEmployed: Number(summary.selfEmployed || 0),
             ofw: Number(summary.ofw || 0),
             nonWorkingSpouse: Number(summary.nonWorkingSpouse || 0),
-            totalBeneficiaries: Number(beneficiaries.totalBeneficiaries || 0)
+            totalBeneficiaries: Number(beneficiaries.totalBeneficiaries || 0),
+            needsReview: Number(quality.needsReview || 0)
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

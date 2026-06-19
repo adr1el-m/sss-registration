@@ -19,6 +19,7 @@
         <div class="header-actions">
             <button type="button" class="btn btn-secondary" id="random-fill">Fill Random</button>
             <button type="button" class="btn btn-secondary" id="print-form">Print/PDF</button>
+            <button type="button" class="btn btn-secondary" id="archive-page">Archive Page</button>
             <button type="button" class="btn btn-secondary" id="mobile-demo">Mobile Demo</button>
             <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
                 <span class="theme-toggle-icon" aria-hidden="true">DM</span>
@@ -55,6 +56,10 @@
             <span>Archived</span>
             <strong id="summary-archived">0</strong>
         </article>
+        <article class="summary-card">
+            <span>Needs Review</span>
+            <strong id="summary-quality">0</strong>
+        </article>
     </section>
 
     <main class="workspace">
@@ -65,6 +70,13 @@
                     <span id="form-mode">New record</span>
                 </div>
                 <div class="validation-errors hidden" id="validation-errors" aria-live="polite"></div>
+                <div class="quality-panel" id="quality-panel" aria-live="polite">
+                    <div>
+                        <strong>Data Quality Checker</strong>
+                        <span id="quality-summary">Ready for review</span>
+                    </div>
+                    <ul id="quality-list"></ul>
+                </div>
 
                 <section class="form-section">
                     <h2>A. Personal Data</h2>
@@ -242,7 +254,7 @@
         <aside class="records-panel">
             <div class="records-header">
                 <div>
-                    <h2>Saved Records</h2>
+                    <h2 id="records-title">Saved Records</h2>
                     <span id="record-count">0 records</span>
                 </div>
             </div>
@@ -252,6 +264,31 @@
                     <option value="archived">Archived records</option>
                     <option value="all">All records</option>
                 </select>
+                <select id="record-employment-filter" aria-label="Employment type filter">
+                    <option value="">All employment</option>
+                    <option value="SE">Self-Employed</option>
+                    <option value="OFW">OFW</option>
+                    <option value="NWS">Non-Working Spouse</option>
+                </select>
+                <select id="record-sex-filter" aria-label="Sex filter">
+                    <option value="">All sex</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                </select>
+                <select id="record-civil-filter" aria-label="Civil status filter">
+                    <option value="">All civil status</option>
+                    <option value="S">Single</option>
+                    <option value="M">Married</option>
+                    <option value="W">Widowed</option>
+                    <option value="LS">Legally Separated</option>
+                    <option value="O">Others</option>
+                </select>
+                <select id="record-quality-filter" aria-label="Data quality filter">
+                    <option value="">All quality</option>
+                    <option value="needs-review">Needs review</option>
+                    <option value="ok">Quality OK</option>
+                </select>
+                <button type="button" class="btn btn-secondary" id="clear-record-filters">Clear Filters</button>
             </div>
             <input id="record-search" class="search-input" placeholder="Search SS number, name, or email">
             <div id="record-list" class="record-list"></div>
@@ -276,6 +313,26 @@
         </div>
     </div>
 </div>
+
+<div class="modal-backdrop hidden" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+    <div class="review-dialog detail-dialog">
+        <div class="review-header">
+            <div>
+                <p class="kicker">Record detail preview</p>
+                <h2 id="detail-title">E-1 Record</h2>
+            </div>
+            <button type="button" class="icon-only" id="detail-close" aria-label="Close detail preview">X</button>
+        </div>
+        <div class="review-content detail-content" id="detail-content"></div>
+        <div class="review-actions">
+            <button type="button" class="btn btn-secondary" id="detail-edit">Edit Record</button>
+            <button type="button" class="btn btn-secondary" id="detail-pdf">Generate E-1 PDF</button>
+            <button type="button" class="btn btn-primary" id="detail-done">Done</button>
+        </div>
+    </div>
+</div>
+
+<section class="official-print hidden" id="official-print" aria-hidden="true"></section>
 <script src="script.js"></script>
 </body>
 </html>
