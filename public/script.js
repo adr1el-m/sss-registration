@@ -120,6 +120,11 @@ function money(inputValue) {
     });
 }
 
+function moneyOrBlank(inputValue) {
+    if (inputValue === undefined || inputValue === null || inputValue === '') return '';
+    return money(inputValue);
+}
+
 function formatSex(inputValue) {
     if (inputValue === 'M') return 'Male';
     if (inputValue === 'F') return 'Female';
@@ -461,10 +466,18 @@ function computeQualityWarnings(payload) {
     const warnings = [];
     const r = payload.registrant;
     const hasDependents = Boolean(payload.spouse.Spouse_Name || payload.children.length || payload.otherBeneficiaries.length);
+    const validCivilStatuses = ['S', 'M', 'W', 'LS', 'O'];
+    const validEmploymentTypes = ['SE', 'OFW', 'NWS'];
 
     if (!r.TIN) warnings.push('TIN is blank.');
     if (!r.Mobile_Number) warnings.push('Mobile number is blank.');
     if (!r.Email_Address) warnings.push('Email address is blank.');
+    if (!r.Sex) warnings.push('Sex is blank.');
+    if (r.Sex && !['M', 'F'].includes(r.Sex)) warnings.push('Sex code is not recognized.');
+    if (!r.Civil_Status) warnings.push('Civil status is blank.');
+    if (r.Civil_Status && !validCivilStatuses.includes(r.Civil_Status)) warnings.push('Civil status code is not recognized.');
+    if (!r.Employment_Type) warnings.push('Employment type is blank.');
+    if (r.Employment_Type && !validEmploymentTypes.includes(r.Employment_Type)) warnings.push('Employment type is not recognized.');
     if (!hasDependents) warnings.push('No spouse, child, or beneficiary has been added.');
     if (r.Civil_Status === 'M' && !payload.spouse.Spouse_Name) warnings.push('Civil status is married but spouse name is blank.');
     if (r.Employment_Type === 'SE' && !payload.employmentDetails.SE_Profession) warnings.push('Self-employed profession or business is blank.');
@@ -917,20 +930,20 @@ function renderOfficialE1(record) {
                     <strong>Self-Employed</strong>
                     <p>Profession/Business: ${escapeHtml(se.SE_Profession || '')}</p>
                     <p>Year Started: ${escapeHtml(se.SE_Year_Started || '')}</p>
-                    <p>Monthly Earnings: PHP ${escapeHtml(money(se.SE_Monthly_Earnings))}</p>
+                    <p>Monthly Earnings: ${se.SE_Monthly_Earnings ? `PHP ${escapeHtml(moneyOrBlank(se.SE_Monthly_Earnings))}` : ''}</p>
                     ${officialCheckbox('Selected', r.Employment_Type === 'SE')}
                 </section>
                 <section>
                     <strong>Overseas Filipino Worker</strong>
                     <p>Foreign Address: ${escapeHtml(ofw.OFW_Foreign_Address || '')}</p>
-                    <p>Monthly Earnings: PHP ${escapeHtml(money(ofw.OFW_Monthly_Earnings))}</p>
+                    <p>Monthly Earnings: ${ofw.OFW_Monthly_Earnings ? `PHP ${escapeHtml(moneyOrBlank(ofw.OFW_Monthly_Earnings))}` : ''}</p>
                     <p>Flexi-Fund: ${ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1 ? 'Yes' : 'No'}</p>
                     ${officialCheckbox('Selected', r.Employment_Type === 'OFW')}
                 </section>
                 <section>
                     <strong>Non-Working Spouse</strong>
                     <p>Working Spouse SS/CRN: ${escapeHtml(nws.WS_SSN || '')}</p>
-                    <p>Working Spouse Income: PHP ${escapeHtml(money(nws.WS_Income))}</p>
+                    <p>Working Spouse Income: ${nws.WS_Income ? `PHP ${escapeHtml(moneyOrBlank(nws.WS_Income))}` : ''}</p>
                     ${officialCheckbox('Selected', r.Employment_Type === 'NWS')}
                 </section>
             </div>

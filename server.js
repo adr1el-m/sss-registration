@@ -108,6 +108,12 @@ const qualityIssueExpression = `
         WHEN NULLIF(TRIM(r.TIN), '') IS NULL
           OR NULLIF(TRIM(r.Mobile_Number), '') IS NULL
           OR NULLIF(TRIM(r.Email_Address), '') IS NULL
+          OR NULLIF(TRIM(r.Sex), '') IS NULL
+          OR r.Sex NOT IN ('M', 'F')
+          OR NULLIF(TRIM(r.Civil_Status), '') IS NULL
+          OR r.Civil_Status NOT IN ('S', 'M', 'W', 'LS', 'O')
+          OR NULLIF(TRIM(r.Employment_Type), '') IS NULL
+          OR r.Employment_Type NOT IN ('SE', 'OFW', 'NWS')
           OR COUNT(DISTINCT b.Ben_ID) = 0
           OR (r.Civil_Status = 'M' AND NULLIF(TRIM(MAX(sp.Spouse_Name)), '') IS NULL)
           OR (r.Employment_Type = 'SE' AND NULLIF(TRIM(MAX(se.SE_Profession)), '') IS NULL)
