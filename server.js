@@ -13,12 +13,289 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const pool = mysql.createPool({
     host: process.env.DB_HOST || '127.0.0.1',
+    port: Number(process.env.DB_PORT || 3306),
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'sss_db',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
+});
+
+function emptyToNull(value) {
+    if (value === undefined || value === null || value === '') return null;
+    return value;
+}
+
+function sexCode(value) {
+    if (!value) return null;
+    return String(value).toUpperCase().startsWith('F') ? 'F' : 'M';
+}
+
+function civilStatusCode(value) {
+    const map = {
+        Single: 'S',
+        Married: 'M',
+        Widowed: 'W',
+        'Legally Separated': 'LS',
+        Others: 'O'
+    };
+    return map[value] || value || null;
+}
+
+async function nextBeneficiaryId(conn) {
+    const [rows] = await conn.query(
+        `SELECT MAX(CAST(SUBSTRING(Ben_ID, 2) AS UNSIGNED)) AS maxId
+         FROM Beneficiaries_Table
+         WHERE Ben_ID REGEXP '^B[0-9]+$'`
+    );
+    const next = Number(rows[0]?.maxId || 0) + 1;
+    return `B${String(next).padStart(5, '0')}`;
+}
+
+async function getE1Record(ssNumber) {
+    const [[registrant]] = await pool.query('SELECT * FROM Registrant_Table WHERE SS_Number = ?', [ssNumber]);
+    if (!registrant) return null;
+
+    const [[spouse]] = await pool.query('SELECT * FROM Spouse_Table WHERE SS_Number = ?', [ssNumber]);
+    const [beneficiaries] = await pool.query(
+        'SELECT * FROM Beneficiaries_Table WHERE SS_Number = ? ORDER BY Ben_Relationship, Ben_ID',
+        [ssNumber]
+    );
+    const [[selfEmployed]] = await pool.query('SELECT * FROM Self_Employed_Table WHERE SS_Number = ?', [ssNumber]);
+    const [[ofw]] = await pool.query('SELECT * FROM OFW_Table WHERE SS_Number = ?', [ssNumber]);
+    const [[nws]] = await pool.query('SELECT * FROM Non_Working_Spouse WHERE SS_Number = ?', [ssNumber]);
+
+    return {
+        registrant,
+        spouse: spouse || null,
+        children: beneficiaries.filter(b => String(b.Ben_Relationship || '').toLowerCase() === 'child'),
+        otherBeneficiaries: beneficiaries.filter(b => String(b.Ben_Relationship || '').toLowerCase() !== 'child'),
+        employmentDetails: {
+            selfEmployed: selfEmployed || null,
+            ofw: ofw || null,
+            nonWorkingSpouse: nws || null
+        }
+    };
+}
+
+async function saveE1Record(payload, existingSsNumber = null) {
+    const d = payload.registrant || payload;
+    const ssNumber = existingSsNumber || d.SS_Number;
+    if (!ssNumber) {
+        const err = new Error('SS Number is required.');
+        err.status = 400;
+        throw err;
+    }
+
+    const employmentType = d.Employment_Type || 'SE';
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        if (existingSsNumber && existingSsNumber !== d.SS_Number) {
+            const err = new Error('SS Number cannot be changed while editing.');
+            err.status = 400;
+            throw err;
+        }
+
+        await conn.query(
+            `INSERT INTO Registrant_Table
+                (SS_Number, Registrant_Name, Date_of_Birth, Sex, Civil_Status, TIN, Nationality, Religion, POB,
+                 Home_Address, Mobile_Number, Email_Address, Telephone_Number, Father_Name, Mother_Maiden_Name, Employment_Type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                Registrant_Name=VALUES(Registrant_Name),
+                Date_of_Birth=VALUES(Date_of_Birth),
+                Sex=VALUES(Sex),
+                Civil_Status=VALUES(Civil_Status),
+                TIN=VALUES(TIN),
+                Nationality=VALUES(Nationality),
+                Religion=VALUES(Religion),
+                POB=VALUES(POB),
+                Home_Address=VALUES(Home_Address),
+                Mobile_Number=VALUES(Mobile_Number),
+                Email_Address=VALUES(Email_Address),
+                Telephone_Number=VALUES(Telephone_Number),
+                Father_Name=VALUES(Father_Name),
+                Mother_Maiden_Name=VALUES(Mother_Maiden_Name),
+                Employment_Type=VALUES(Employment_Type)`,
+            [
+                ssNumber,
+                d.Registrant_Name,
+                d.Date_of_Birth,
+                sexCode(d.Sex),
+                civilStatusCode(d.Civil_Status),
+                emptyToNull(d.TIN),
+                emptyToNull(d.Nationality),
+                emptyToNull(d.Religion),
+                emptyToNull(d.POB),
+                d.Home_Address,
+                emptyToNull(d.Mobile_Number),
+                emptyToNull(d.Email_Address),
+                emptyToNull(d.Telephone_Number),
+                emptyToNull(d.Father_Name),
+                d.Mother_Maiden_Name,
+                employmentType
+            ]
+        );
+
+        await conn.query('DELETE FROM Spouse_Table WHERE SS_Number = ?', [ssNumber]);
+        const spouse = payload.spouse || {};
+        if (spouse.Spouse_Name) {
+            await conn.query(
+                `INSERT INTO Spouse_Table (SS_Number, Spouse_SSN, Spouse_Name, Spouse_DOB)
+                 VALUES (?, ?, ?, ?)`,
+                [
+                    ssNumber,
+                    spouse.Spouse_SSN || `SP-${Date.now().toString().slice(-12)}`,
+                    spouse.Spouse_Name,
+                    emptyToNull(spouse.Spouse_DOB)
+                ]
+            );
+        }
+
+        await conn.query('DELETE FROM Beneficiaries_Table WHERE SS_Number = ?', [ssNumber]);
+        const beneficiaryRows = [
+            ...(payload.children || []).map(child => ({ ...child, Ben_Relationship: 'Child' })),
+            ...(payload.otherBeneficiaries || []).map(beneficiary => ({
+                ...beneficiary,
+                Ben_Relationship: beneficiary.Ben_Relationship || 'Other'
+            }))
+        ].filter(beneficiary => beneficiary.Ben_Name);
+
+        for (const beneficiary of beneficiaryRows) {
+            await conn.query(
+                `INSERT INTO Beneficiaries_Table (Ben_ID, SS_Number, Ben_Name, Ben_DOB, Ben_Relationship)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [
+                    beneficiary.Ben_ID || await nextBeneficiaryId(conn),
+                    ssNumber,
+                    beneficiary.Ben_Name,
+                    emptyToNull(beneficiary.Ben_DOB),
+                    emptyToNull(beneficiary.Ben_Relationship)
+                ]
+            );
+        }
+
+        await conn.query('DELETE FROM Self_Employed_Table WHERE SS_Number = ?', [ssNumber]);
+        await conn.query('DELETE FROM OFW_Table WHERE SS_Number = ?', [ssNumber]);
+        await conn.query('DELETE FROM Non_Working_Spouse WHERE SS_Number = ?', [ssNumber]);
+
+        const details = payload.employmentDetails || {};
+        if (employmentType === 'SE') {
+            await conn.query(
+                `INSERT INTO Self_Employed_Table (SS_Number, SE_Profession, SE_Year_Started, SE_Monthly_Earnings)
+                 VALUES (?, ?, ?, ?)`,
+                [
+                    ssNumber,
+                    details.SE_Profession || 'N/A',
+                    Number(details.SE_Year_Started || new Date().getFullYear()),
+                    Number(details.SE_Monthly_Earnings || 0)
+                ]
+            );
+        }
+
+        if (employmentType === 'OFW') {
+            await conn.query(
+                `INSERT INTO OFW_Table (SS_Number, OFW_Foreign_Address, OFW_Monthly_Earnings, OFW_FlexiFund_Flag)
+                 VALUES (?, ?, ?, ?)`,
+                [
+                    ssNumber,
+                    details.OFW_Foreign_Address || 'N/A',
+                    Number(details.OFW_Monthly_Earnings || 0),
+                    details.OFW_FlexiFund_Flag ? 'Y' : 'N'
+                ]
+            );
+        }
+
+        if (employmentType === 'NWS') {
+            await conn.query(
+                `INSERT INTO Non_Working_Spouse (SS_Number, WS_SSN, WS_Income)
+                 VALUES (?, ?, ?)`,
+                [
+                    ssNumber,
+                    details.WS_SSN || 'N/A',
+                    Number(details.WS_Income || 0)
+                ]
+            );
+        }
+
+        await conn.commit();
+        return ssNumber;
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
+// ─── E-1 PERSONAL RECORD DOCUMENT CRUD ────────────────────────
+app.get('/api/e1-records', async (req, res) => {
+    try {
+        const search = req.query.search ? `%${req.query.search}%` : null;
+        let query = `
+            SELECT
+                r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.Mobile_Number,
+                r.Email_Address, r.Employment_Type,
+                COUNT(b.Ben_ID) AS Beneficiary_Count
+            FROM Registrant_Table r
+            LEFT JOIN Beneficiaries_Table b ON b.SS_Number = r.SS_Number`;
+        const params = [];
+        if (search) {
+            query += ' WHERE r.SS_Number LIKE ? OR r.Registrant_Name LIKE ? OR r.Email_Address LIKE ?';
+            params.push(search, search, search);
+        }
+        query += `
+            GROUP BY r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status,
+                     r.Mobile_Number, r.Email_Address, r.Employment_Type
+            ORDER BY r.SS_Number DESC`;
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/e1-records/:id', async (req, res) => {
+    try {
+        const record = await getE1Record(req.params.id);
+        if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
+        res.json(record);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/e1-records', async (req, res) => {
+    try {
+        const id = await saveE1Record(req.body);
+        res.status(201).json({ message: 'E-1 record created.', id });
+    } catch (err) {
+        res.status(err.status || 500).json({ error: err.message });
+    }
+});
+
+app.put('/api/e1-records/:id', async (req, res) => {
+    try {
+        const record = await getE1Record(req.params.id);
+        if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
+        const id = await saveE1Record(req.body, req.params.id);
+        res.json({ message: 'E-1 record updated.', id });
+    } catch (err) {
+        res.status(err.status || 500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/e1-records/:id', async (req, res) => {
+    try {
+        const [result] = await pool.query('DELETE FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
+        if (!result.affectedRows) return res.status(404).json({ error: 'E-1 record not found.' });
+        res.json({ message: 'E-1 record deleted.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ─── REGISTRANTS ──────────────────────────────────────────────
@@ -49,8 +326,8 @@ app.post('/api/registrants', async (req, res) => {
     const d = req.body;
     try {
         await pool.query(
-            `INSERT INTO Registrant_Table (SS_Number,Registrant_Name,Date_of_Birth,Sex,Civil_Status,TIN,Nationality,Religion,POB,Home_Address,Mobile_Number,Email_Address,Telephone_Number,Father_Name,Mother_Maiden_Name,Employement_Type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [d.SS_Number,d.Registrant_Name,d.Date_of_Birth||null,d.Sex||null,d.Civil_Status||null,d.TIN||null,d.Nationality||null,d.Religion||null,d.POB||null,d.Home_Address||null,d.Mobile_Number||null,d.Email_Address||null,d.Telephone_Number||null,d.Father_Name||null,d.Mother_Maiden_Name||null,d.Employement_Type||null]
+            `INSERT INTO Registrant_Table (SS_Number,Registrant_Name,Date_of_Birth,Sex,Civil_Status,TIN,Nationality,Religion,POB,Home_Address,Mobile_Number,Email_Address,Telephone_Number,Father_Name,Mother_Maiden_Name,Employment_Type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [d.SS_Number,d.Registrant_Name,d.Date_of_Birth||null,d.Sex||null,d.Civil_Status||null,d.TIN||null,d.Nationality||null,d.Religion||null,d.POB||null,d.Home_Address||null,d.Mobile_Number||null,d.Email_Address||null,d.Telephone_Number||null,d.Father_Name||null,d.Mother_Maiden_Name||null,d.Employment_Type||d.Employement_Type||null]
         );
         res.status(201).json({ message: 'Created', id: d.SS_Number });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -60,8 +337,8 @@ app.put('/api/registrants/:id', async (req, res) => {
     const d = req.body;
     try {
         const [result] = await pool.query(
-            `UPDATE Registrant_Table SET Registrant_Name=?,Date_of_Birth=?,Sex=?,Civil_Status=?,TIN=?,Nationality=?,Religion=?,POB=?,Home_Address=?,Mobile_Number=?,Email_Address=?,Telephone_Number=?,Father_Name=?,Mother_Maiden_Name=?,Employement_Type=? WHERE SS_Number=?`,
-            [d.Registrant_Name,d.Date_of_Birth||null,d.Sex||null,d.Civil_Status||null,d.TIN||null,d.Nationality||null,d.Religion||null,d.POB||null,d.Home_Address||null,d.Mobile_Number||null,d.Email_Address||null,d.Telephone_Number||null,d.Father_Name||null,d.Mother_Maiden_Name||null,d.Employement_Type||null,req.params.id]
+            `UPDATE Registrant_Table SET Registrant_Name=?,Date_of_Birth=?,Sex=?,Civil_Status=?,TIN=?,Nationality=?,Religion=?,POB=?,Home_Address=?,Mobile_Number=?,Email_Address=?,Telephone_Number=?,Father_Name=?,Mother_Maiden_Name=?,Employment_Type=? WHERE SS_Number=?`,
+            [d.Registrant_Name,d.Date_of_Birth||null,d.Sex||null,d.Civil_Status||null,d.TIN||null,d.Nationality||null,d.Religion||null,d.POB||null,d.Home_Address||null,d.Mobile_Number||null,d.Email_Address||null,d.Telephone_Number||null,d.Father_Name||null,d.Mother_Maiden_Name||null,d.Employment_Type||d.Employement_Type||null,req.params.id]
         );
         if (!result.affectedRows) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Updated' });
@@ -120,7 +397,7 @@ app.delete('/api/beneficiaries/:id', async (req, res) => {
 // ─── DESIGNATIONS ─────────────────────────────────────────────
 app.get('/api/designations', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM Designations_Table ORDER BY SS_Number, Ben_ID');
+        const [rows] = await pool.query('SELECT SS_Number, Ben_ID, Ben_Relationship FROM Beneficiaries_Table ORDER BY SS_Number, Ben_ID');
         res.json(rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -128,7 +405,7 @@ app.get('/api/designations', async (req, res) => {
 app.post('/api/designations', async (req, res) => {
     const d = req.body;
     try {
-        await pool.query('INSERT INTO Designations_Table (SS_Number,Ben_ID,Ben_Relationship) VALUES (?,?,?)', [d.SS_Number, d.Ben_ID, d.Ben_Relationship||null]);
+        await pool.query('UPDATE Beneficiaries_Table SET SS_Number=?, Ben_Relationship=? WHERE Ben_ID=?', [d.SS_Number, d.Ben_Relationship||null, d.Ben_ID]);
         res.status(201).json({ message: 'Created' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -136,7 +413,7 @@ app.post('/api/designations', async (req, res) => {
 app.put('/api/designations/:ss/:ben', async (req, res) => {
     const d = req.body;
     try {
-        const [result] = await pool.query('UPDATE Designations_Table SET Ben_Relationship=? WHERE SS_Number=? AND Ben_ID=?', [d.Ben_Relationship, req.params.ss, req.params.ben]);
+        const [result] = await pool.query('UPDATE Beneficiaries_Table SET Ben_Relationship=? WHERE SS_Number=? AND Ben_ID=?', [d.Ben_Relationship, req.params.ss, req.params.ben]);
         if (!result.affectedRows) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Updated' });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -144,7 +421,7 @@ app.put('/api/designations/:ss/:ben', async (req, res) => {
 
 app.delete('/api/designations/:ss/:ben', async (req, res) => {
     try {
-        const [result] = await pool.query('DELETE FROM Designations_Table WHERE SS_Number=? AND Ben_ID=?', [req.params.ss, req.params.ben]);
+        const [result] = await pool.query('UPDATE Beneficiaries_Table SET Ben_Relationship=NULL WHERE SS_Number=? AND Ben_ID=?', [req.params.ss, req.params.ben]);
         if (!result.affectedRows) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Deleted' });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -276,14 +553,14 @@ app.delete('/api/ofw/:id', async (req, res) => {
 // ─── NON-WORKING SPOUSE ───────────────────────────────────────
 app.get('/api/nws', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM Non_Working_Spouse_Table ORDER BY SS_Number');
+        const [rows] = await pool.query('SELECT * FROM Non_Working_Spouse ORDER BY SS_Number');
         res.json(rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/nws/:id', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM Non_Working_Spouse_Table WHERE SS_Number = ?', [req.params.id]);
+        const [rows] = await pool.query('SELECT * FROM Non_Working_Spouse WHERE SS_Number = ?', [req.params.id]);
         if (!rows.length) return res.status(404).json({ error: 'Not found' });
         res.json(rows[0]);
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -292,7 +569,7 @@ app.get('/api/nws/:id', async (req, res) => {
 app.post('/api/nws', async (req, res) => {
     const d = req.body;
     try {
-        await pool.query('INSERT INTO Non_Working_Spouse_Table (SS_Number,WS_SSN,WS_Income) VALUES (?,?,?)', [d.SS_Number, d.WS_SSN||null, d.WS_Income||null]);
+        await pool.query('INSERT INTO Non_Working_Spouse (SS_Number,WS_SSN,WS_Income) VALUES (?,?,?)', [d.SS_Number, d.WS_SSN||null, d.WS_Income||null]);
         res.status(201).json({ message: 'Created' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -300,7 +577,7 @@ app.post('/api/nws', async (req, res) => {
 app.put('/api/nws/:id', async (req, res) => {
     const d = req.body;
     try {
-        const [result] = await pool.query('UPDATE Non_Working_Spouse_Table SET WS_SSN=?,WS_Income=? WHERE SS_Number=?', [d.WS_SSN||null, d.WS_Income||null, req.params.id]);
+        const [result] = await pool.query('UPDATE Non_Working_Spouse SET WS_SSN=?,WS_Income=? WHERE SS_Number=?', [d.WS_SSN||null, d.WS_Income||null, req.params.id]);
         if (!result.affectedRows) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Updated' });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -308,7 +585,7 @@ app.put('/api/nws/:id', async (req, res) => {
 
 app.delete('/api/nws/:id', async (req, res) => {
     try {
-        const [result] = await pool.query('DELETE FROM Non_Working_Spouse_Table WHERE SS_Number = ?', [req.params.id]);
+        const [result] = await pool.query('DELETE FROM Non_Working_Spouse WHERE SS_Number = ?', [req.params.id]);
         if (!result.affectedRows) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Deleted' });
     } catch (err) { res.status(500).json({ error: err.message }); }

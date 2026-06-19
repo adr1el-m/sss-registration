@@ -3,419 +3,216 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SSS Registrant Management System</title>
-    <meta name="description" content="SSS Registrant Management System – manage registrants, beneficiaries, designations, spouses, and more.">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>SSS E-1 Personal Record</title>
+    <meta name="description" content="Create, update, view, and delete SSS E-1 Personal Record entries.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="app-container">
-    <header class="app-header">
-        <div class="logo">
-            <div class="logo-icon"></div>
-            <h1>SSS Portal</h1>
+<div class="app-shell">
+    <header class="page-header">
+        <div>
+            <p class="kicker">Republic of the Philippines</p>
+            <h1>SSS E-1 Personal Record</h1>
+            <p class="subtitle">For issuance of SS number</p>
         </div>
-        <p class="subtitle">Registrant Management System</p>
+        <div class="header-mark">
+            <span>E-1</span>
+        </div>
     </header>
 
-    <!-- Tab Navigation -->
-    <nav class="tab-nav" role="tablist">
-        <button class="tab-btn active" data-tab="registrants" id="tab-registrants">Registrants</button>
-        <button class="tab-btn" data-tab="beneficiaries" id="tab-beneficiaries">Beneficiaries</button>
-        <button class="tab-btn" data-tab="designations" id="tab-designations">Designations</button>
-        <button class="tab-btn" data-tab="spouses" id="tab-spouses">Spouses</button>
-        <button class="tab-btn" data-tab="self-employed" id="tab-self-employed">Self-Employed</button>
-        <button class="tab-btn" data-tab="ofw" id="tab-ofw">OFW</button>
-        <button class="tab-btn" data-tab="nws" id="tab-nws">NW Spouse</button>
-    </nav>
+    <main class="workspace">
+        <section class="document-panel">
+            <form id="e1-form">
+                <div class="document-title">
+                    <strong>Part I - To be Filled Out by the Registrant</strong>
+                    <span id="form-mode">New record</span>
+                </div>
 
-    <main>
+                <section class="form-section">
+                    <h2>A. Personal Data</h2>
+                    <div class="form-grid">
+                        <label>
+                            <span>SS Number</span>
+                            <input id="SS_Number" name="SS_Number" required maxlength="15" placeholder="01-2345678-9">
+                        </label>
+                        <label class="span-3">
+                            <span>Full Name</span>
+                            <input id="Registrant_Name" name="Registrant_Name" required placeholder="Last name, First name Middle name">
+                        </label>
+                        <label>
+                            <span>Date of Birth</span>
+                            <input id="Date_of_Birth" name="Date_of_Birth" required type="date">
+                        </label>
+                        <label>
+                            <span>Sex</span>
+                            <select id="Sex" name="Sex" required>
+                                <option value="">Select</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Civil Status</span>
+                            <select id="Civil_Status" name="Civil_Status" required>
+                                <option value="">Select</option>
+                                <option value="S">Single</option>
+                                <option value="M">Married</option>
+                                <option value="W">Widowed</option>
+                                <option value="LS">Legally Separated</option>
+                                <option value="O">Others</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>TIN</span>
+                            <input id="TIN" name="TIN" maxlength="20" placeholder="000-000-000-000">
+                        </label>
+                        <label>
+                            <span>Nationality</span>
+                            <input id="Nationality" name="Nationality" placeholder="Filipino">
+                        </label>
+                        <label>
+                            <span>Religion</span>
+                            <input id="Religion" name="Religion">
+                        </label>
+                        <label class="span-2">
+                            <span>Place of Birth</span>
+                            <input id="POB" name="POB" placeholder="City/Municipality, Province">
+                        </label>
+                        <label class="span-4">
+                            <span>Home Address</span>
+                            <input id="Home_Address" name="Home_Address" required placeholder="Room/Floor/Unit, house/lot/block, street, subdivision, barangay, city, province, country, ZIP">
+                        </label>
+                        <label>
+                            <span>Mobile/Cellphone Number</span>
+                            <input id="Mobile_Number" name="Mobile_Number" maxlength="15" placeholder="09XXXXXXXXX">
+                        </label>
+                        <label class="span-2">
+                            <span>Email Address</span>
+                            <input id="Email_Address" name="Email_Address" type="email" placeholder="name@example.com">
+                        </label>
+                        <label>
+                            <span>Telephone Number</span>
+                            <input id="Telephone_Number" name="Telephone_Number" maxlength="15">
+                        </label>
+                        <label class="span-2">
+                            <span>Father</span>
+                            <input id="Father_Name" name="Father_Name" placeholder="Last name, First name Middle name">
+                        </label>
+                        <label class="span-2">
+                            <span>Mother's Maiden Name</span>
+                            <input id="Mother_Maiden_Name" name="Mother_Maiden_Name" required placeholder="Last name, First name Middle name">
+                        </label>
+                    </div>
+                </section>
 
-        <!-- ── REGISTRANTS ───────────────────────────────────── -->
-        <div id="panel-registrants" class="tab-panel active">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="reg-form-title">Add Registrant</h2>
-                    <form id="reg-form">
+                <section class="form-section">
+                    <div class="section-heading-row">
+                        <h2>B. Dependent(s)/Beneficiary/ies</h2>
+                        <label class="inline-check">
+                            <input id="additional-sheet" type="checkbox">
+                            <span>Using additional sheet</span>
+                        </label>
+                    </div>
+                    <div class="form-grid">
+                        <label class="span-3">
+                            <span>Spouse Name</span>
+                            <input id="Spouse_Name" name="Spouse_Name" placeholder="Last name, First name Middle name">
+                        </label>
+                        <label>
+                            <span>Spouse Date of Birth</span>
+                            <input id="Spouse_DOB" name="Spouse_DOB" type="date">
+                        </label>
+                    </div>
+
+                    <div class="repeat-header">
+                        <strong>Child/ren</strong>
+                        <button type="button" class="btn btn-secondary" id="add-child">Add Child</button>
+                    </div>
+                    <div id="children-list" class="repeat-list"></div>
+
+                    <div class="repeat-header">
+                        <strong>Other Beneficiary/ies</strong>
+                        <button type="button" class="btn btn-secondary" id="add-beneficiary">Add Beneficiary</button>
+                    </div>
+                    <div id="other-beneficiaries-list" class="repeat-list"></div>
+                </section>
+
+                <section class="form-section">
+                    <h2>C. Self-Employed / Overseas Filipino Worker / Non-Working Spouse</h2>
+                    <div class="employment-tabs" role="radiogroup" aria-label="Employment type">
+                        <label><input type="radio" name="Employment_Type" value="SE" checked> Self-Employed</label>
+                        <label><input type="radio" name="Employment_Type" value="OFW"> OFW</label>
+                        <label><input type="radio" name="Employment_Type" value="NWS"> Non-Working Spouse</label>
+                    </div>
+
+                    <div class="employment-panel" data-employment-panel="SE">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="reg-SS_Number">SS Number</label>
-                                <input type="text" id="reg-SS_Number" required placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Registrant_Name">Full Name</label>
-                                <input type="text" id="reg-Registrant_Name" required placeholder="First M. Last">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Date_of_Birth">Date of Birth</label>
-                                <input type="date" id="reg-Date_of_Birth">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Sex">Sex</label>
-                                <select id="reg-Sex">
-                                    <option value="">Select...</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Civil_Status">Civil Status</label>
-                                <select id="reg-Civil_Status">
-                                    <option value="">Select...</option>
-                                    <option value="Single">Single</option>
-                                    <option value="Married">Married</option>
-                                    <option value="Widowed">Widowed</option>
-                                    <option value="Separated">Separated</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-TIN">TIN</label>
-                                <input type="text" id="reg-TIN" placeholder="000-000-000">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Nationality">Nationality</label>
-                                <input type="text" id="reg-Nationality" placeholder="Filipino">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Religion">Religion</label>
-                                <input type="text" id="reg-Religion" placeholder="Catholic">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Mobile_Number">Mobile Number</label>
-                                <input type="text" id="reg-Mobile_Number" placeholder="09XXXXXXXXX">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Telephone_Number">Telephone Number</label>
-                                <input type="text" id="reg-Telephone_Number" placeholder="(02) XXXX-XXXX">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Email_Address">Email Address</label>
-                                <input type="email" id="reg-Email_Address" placeholder="email@example.com">
-                            </div>
-                            <div class="form-group">
-                                <label for="reg-Employement_Type">Employment Type</label>
-                                <select id="reg-Employement_Type">
-                                    <option value="">Select...</option>
-                                    <option value="SE">Self-Employed</option>
-                                    <option value="OFW">OFW</option>
-                                    <option value="NWS">Non-Working Spouse</option>
-                                    <option value="PE">Private Employee</option>
-                                    <option value="VM">Voluntary Member</option>
-                                </select>
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="reg-POB">Place of Birth</label>
-                                <input type="text" id="reg-POB" placeholder="City, Province">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="reg-Home_Address">Home Address</label>
-                                <input type="text" id="reg-Home_Address" placeholder="123 Street, Barangay, City">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="reg-Father_Name">Father's Name</label>
-                                <input type="text" id="reg-Father_Name" placeholder="First M. Last">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="reg-Mother_Maiden_Name">Mother's Maiden Name</label>
-                                <input type="text" id="reg-Mother_Maiden_Name" placeholder="First M. Last">
-                            </div>
+                            <label class="span-2">
+                                <span>Profession/Business</span>
+                                <input id="SE_Profession" name="SE_Profession" placeholder="Profession or business">
+                            </label>
+                            <label>
+                                <span>Year Started</span>
+                                <input id="SE_Year_Started" name="SE_Year_Started" type="number" min="1900" max="2100" placeholder="2026">
+                            </label>
+                            <label>
+                                <span>Monthly Earnings</span>
+                                <input id="SE_Monthly_Earnings" name="SE_Monthly_Earnings" type="number" min="0" step="0.01" placeholder="0.00">
+                            </label>
                         </div>
-                        <div class="form-actions">
-                            <button type="button" id="reg-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="reg-btn-submit" class="btn btn-primary">Save Registrant</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>Registrant Records</h2>
-                        <span class="badge" id="reg-count">0</span>
                     </div>
-                    <div class="search-bar">
-                        <input type="text" id="reg-search" placeholder="Search by SS Number or name…">
-                    </div>
-                    <div class="table-container" id="reg-table-wrap">
-                        <table>
-                            <thead><tr>
-                                <th>SS Number</th><th>Name</th><th>DOB</th><th>Sex</th><th>Type</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="reg-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="reg-empty" class="empty-state hidden"><p>No registrants found.</p></div>
-                </section>
-            </div>
-        </div>
 
-        <!-- ── BENEFICIARIES ─────────────────────────────────── -->
-        <div id="panel-beneficiaries" class="tab-panel hidden">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="ben-form-title">Add Beneficiary</h2>
-                    <form id="ben-form">
+                    <div class="employment-panel hidden" data-employment-panel="OFW">
                         <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="ben-Ben_Name">Full Name</label>
-                                <input type="text" id="ben-Ben_Name" required placeholder="First M. Last">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="ben-Ben_DOB">Date of Birth</label>
-                                <input type="date" id="ben-Ben_DOB">
-                            </div>
+                            <label class="span-3">
+                                <span>Foreign Address</span>
+                                <input id="OFW_Foreign_Address" name="OFW_Foreign_Address" placeholder="Street, city, country">
+                            </label>
+                            <label>
+                                <span>Monthly Earnings</span>
+                                <input id="OFW_Monthly_Earnings" name="OFW_Monthly_Earnings" type="number" min="0" step="0.01" placeholder="0.00">
+                            </label>
+                            <label class="inline-check span-2">
+                                <input id="OFW_FlexiFund_Flag" name="OFW_FlexiFund_Flag" type="checkbox">
+                                <span>Applying for Flexi-Fund membership</span>
+                            </label>
                         </div>
-                        <div class="form-actions">
-                            <button type="button" id="ben-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="ben-btn-submit" class="btn btn-primary">Save Beneficiary</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>Beneficiary Records</h2>
-                        <span class="badge" id="ben-count">0</span>
                     </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr>
-                                <th>Ben ID</th><th>Name</th><th>Date of Birth</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="ben-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="ben-empty" class="empty-state hidden"><p>No beneficiaries found.</p></div>
-                </section>
-            </div>
-        </div>
 
-        <!-- ── DESIGNATIONS ──────────────────────────────────── -->
-        <div id="panel-designations" class="tab-panel hidden">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="des-form-title">Add Designation</h2>
-                    <form id="des-form">
+                    <div class="employment-panel hidden" data-employment-panel="NWS">
                         <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="des-SS_Number">SS Number</label>
-                                <input type="text" id="des-SS_Number" required placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="des-Ben_ID">Beneficiary ID</label>
-                                <input type="number" id="des-Ben_ID" required placeholder="e.g. 1">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="des-Ben_Relationship">Relationship</label>
-                                <input type="text" id="des-Ben_Relationship" placeholder="e.g. Daughter, Son">
-                            </div>
+                            <label class="span-2">
+                                <span>Working Spouse SS/Common Reference No.</span>
+                                <input id="WS_SSN" name="WS_SSN" maxlength="15" placeholder="01-2345678-9">
+                            </label>
+                            <label class="span-2">
+                                <span>Monthly Income of Working Spouse</span>
+                                <input id="WS_Income" name="WS_Income" type="number" min="0" step="0.01" placeholder="0.00">
+                            </label>
                         </div>
-                        <div class="form-actions">
-                            <button type="button" id="des-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="des-btn-submit" class="btn btn-primary">Save Designation</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>Designation Records</h2>
-                        <span class="badge" id="des-count">0</span>
                     </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr>
-                                <th>SS Number</th><th>Ben ID</th><th>Relationship</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="des-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="des-empty" class="empty-state hidden"><p>No designations found.</p></div>
                 </section>
-            </div>
-        </div>
 
-        <!-- ── SPOUSES ───────────────────────────────────────── -->
-        <div id="panel-spouses" class="tab-panel hidden">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="sp-form-title">Add Spouse</h2>
-                    <form id="sp-form">
-                        <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="sp-SS_Number">SS Number</label>
-                                <input type="text" id="sp-SS_Number" required placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="sp-Spouse_Name">Spouse Name</label>
-                                <input type="text" id="sp-Spouse_Name" required placeholder="First M. Last">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="sp-Spouse_DOB">Spouse Date of Birth</label>
-                                <input type="date" id="sp-Spouse_DOB">
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" id="sp-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="sp-btn-submit" class="btn btn-primary">Save Spouse</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>Spouse Records</h2>
-                        <span class="badge" id="sp-count">0</span>
-                    </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr>
-                                <th>SS Number</th><th>Spouse Name</th><th>Date of Birth</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="sp-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="sp-empty" class="empty-state hidden"><p>No spouse records found.</p></div>
-                </section>
-            </div>
-        </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="reset-form">Clear</button>
+                    <button type="submit" class="btn btn-primary" id="save-record">Save E-1 Record</button>
+                </div>
+                <p class="status" id="form-status" aria-live="polite"></p>
+            </form>
+        </section>
 
-        <!-- ── SELF-EMPLOYED ─────────────────────────────────── -->
-        <div id="panel-self-employed" class="tab-panel hidden">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="se-form-title">Add Self-Employed</h2>
-                    <form id="se-form">
-                        <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="se-SS_Number">SS Number</label>
-                                <input type="text" id="se-SS_Number" required placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="se-SE_Profession">Profession</label>
-                                <input type="text" id="se-SE_Profession" placeholder="e.g. Civil Engineer">
-                            </div>
-                            <div class="form-group">
-                                <label for="se-SE_Year_Started">Year Started</label>
-                                <input type="number" id="se-SE_Year_Started" placeholder="e.g. 2019" min="1900" max="2100">
-                            </div>
-                            <div class="form-group">
-                                <label for="se-SE_Monthly_Earnings">Monthly Earnings (₱)</label>
-                                <input type="number" id="se-SE_Monthly_Earnings" placeholder="0.00" step="0.01">
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" id="se-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="se-btn-submit" class="btn btn-primary">Save Record</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>Self-Employed Records</h2>
-                        <span class="badge" id="se-count">0</span>
-                    </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr>
-                                <th>SS Number</th><th>Profession</th><th>Year Started</th><th>Monthly Earnings</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="se-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="se-empty" class="empty-state hidden"><p>No self-employed records found.</p></div>
-                </section>
+        <aside class="records-panel">
+            <div class="records-header">
+                <div>
+                    <h2>Saved Records</h2>
+                    <span id="record-count">0 records</span>
+                </div>
             </div>
-        </div>
-
-        <!-- ── OFW ───────────────────────────────────────────── -->
-        <div id="panel-ofw" class="tab-panel hidden">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="ofw-form-title">Add OFW</h2>
-                    <form id="ofw-form">
-                        <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="ofw-SS_Number">SS Number</label>
-                                <input type="text" id="ofw-SS_Number" required placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="ofw-OFW_Foreign_Address">Foreign Address</label>
-                                <input type="text" id="ofw-OFW_Foreign_Address" placeholder="Street, City, Country">
-                            </div>
-                            <div class="form-group">
-                                <label for="ofw-OFW_Monthly_Earnings">Monthly Earnings (₱)</label>
-                                <input type="number" id="ofw-OFW_Monthly_Earnings" placeholder="0.00" step="0.01">
-                            </div>
-                            <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;padding-top:1.4rem;">
-                                <input type="checkbox" id="ofw-OFW_FlexiFund_Flag" style="width:auto">
-                                <label for="ofw-OFW_FlexiFund_Flag" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.9rem;">FlexiFund</label>
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" id="ofw-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="ofw-btn-submit" class="btn btn-primary">Save OFW</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>OFW Records</h2>
-                        <span class="badge" id="ofw-count">0</span>
-                    </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr>
-                                <th>SS Number</th><th>Foreign Address</th><th>Monthly Earnings</th><th>FlexiFund</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="ofw-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="ofw-empty" class="empty-state hidden"><p>No OFW records found.</p></div>
-                </section>
-            </div>
-        </div>
-
-        <!-- ── NON-WORKING SPOUSE ────────────────────────────── -->
-        <div id="panel-nws" class="tab-panel hidden">
-            <div class="main-content">
-                <section class="card form-section">
-                    <h2 id="nws-form-title">Add NW Spouse</h2>
-                    <form id="nws-form">
-                        <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="nws-SS_Number">SS Number</label>
-                                <input type="text" id="nws-SS_Number" required placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="nws-WS_SSN">Working Spouse SS Number</label>
-                                <input type="text" id="nws-WS_SSN" placeholder="01-2345678-9">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="nws-WS_Income">Spouse Income (₱)</label>
-                                <input type="number" id="nws-WS_Income" placeholder="0.00" step="0.01">
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" id="nws-btn-cancel" class="btn btn-secondary hidden">Cancel</button>
-                            <button type="submit" id="nws-btn-submit" class="btn btn-primary">Save Record</button>
-                        </div>
-                    </form>
-                </section>
-                <section class="card list-section">
-                    <div class="section-header">
-                        <h2>Non-Working Spouse Records</h2>
-                        <span class="badge" id="nws-count">0</span>
-                    </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr>
-                                <th>SS Number</th><th>Working Spouse SSN</th><th>Spouse Income</th><th>Actions</th>
-                            </tr></thead>
-                            <tbody id="nws-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="nws-empty" class="empty-state hidden"><p>No NW spouse records found.</p></div>
-                </section>
-            </div>
-        </div>
-
+            <input id="record-search" class="search-input" placeholder="Search SS number, name, or email">
+            <div id="record-list" class="record-list"></div>
+            <p id="empty-records" class="empty-state hidden">No E-1 records found.</p>
+        </aside>
     </main>
 </div>
 <script src="script.js"></script>
