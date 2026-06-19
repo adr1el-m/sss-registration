@@ -18,6 +18,8 @@
         </div>
         <div class="header-actions">
             <button type="button" class="btn btn-secondary" id="random-fill">Fill Random</button>
+            <button type="button" class="btn btn-secondary" id="print-form">Print/PDF</button>
+            <button type="button" class="btn btn-secondary" id="mobile-demo">Mobile Demo</button>
             <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
                 <span class="theme-toggle-icon" aria-hidden="true">DM</span>
                 <span id="theme-toggle-label">Dark Mode</span>
@@ -28,6 +30,33 @@
         </div>
     </header>
 
+    <section class="summary-grid" aria-label="Dashboard summary">
+        <article class="summary-card">
+            <span>Total Active</span>
+            <strong id="summary-active">0</strong>
+        </article>
+        <article class="summary-card">
+            <span>Self-Employed</span>
+            <strong id="summary-se">0</strong>
+        </article>
+        <article class="summary-card">
+            <span>OFW</span>
+            <strong id="summary-ofw">0</strong>
+        </article>
+        <article class="summary-card">
+            <span>NW Spouse</span>
+            <strong id="summary-nws">0</strong>
+        </article>
+        <article class="summary-card">
+            <span>Beneficiaries</span>
+            <strong id="summary-beneficiaries">0</strong>
+        </article>
+        <article class="summary-card">
+            <span>Archived</span>
+            <strong id="summary-archived">0</strong>
+        </article>
+    </section>
+
     <main class="workspace">
         <section class="document-panel">
             <form id="e1-form">
@@ -35,13 +64,14 @@
                     <strong>Part I - To be Filled Out by the Registrant</strong>
                     <span id="form-mode">New record</span>
                 </div>
+                <div class="validation-errors hidden" id="validation-errors" aria-live="polite"></div>
 
                 <section class="form-section">
                     <h2>A. Personal Data</h2>
                     <div class="form-grid">
                         <label>
                             <span>SS Number</span>
-                            <input id="SS_Number" name="SS_Number" required maxlength="15" placeholder="01-2345678-9">
+                            <input id="SS_Number" name="SS_Number" required maxlength="15" pattern="[0-9]{2}-[0-9]{7}-[0-9]" title="Use the format 00-0000000-0" placeholder="01-2345678-9">
                         </label>
                         <label class="span-3">
                             <span>Full Name</span>
@@ -72,7 +102,7 @@
                         </label>
                         <label>
                             <span>TIN</span>
-                            <input id="TIN" name="TIN" maxlength="20" placeholder="000-000-000-000">
+                            <input id="TIN" name="TIN" maxlength="20" pattern="[0-9]{3}-[0-9]{3}-[0-9]{3}-[0-9]{3}" title="Use the format 000-000-000-000" placeholder="000-000-000-000">
                         </label>
                         <label>
                             <span>Nationality</span>
@@ -92,7 +122,7 @@
                         </label>
                         <label>
                             <span>Mobile/Cellphone Number</span>
-                            <input id="Mobile_Number" name="Mobile_Number" maxlength="15" placeholder="09XXXXXXXXX">
+                            <input id="Mobile_Number" name="Mobile_Number" maxlength="15" pattern="09[0-9]{9}" title="Use an 11-digit number starting with 09" placeholder="09XXXXXXXXX">
                         </label>
                         <label class="span-2">
                             <span>Email Address</span>
@@ -216,11 +246,35 @@
                     <span id="record-count">0 records</span>
                 </div>
             </div>
+            <div class="record-tools">
+                <select id="record-status-filter" aria-label="Record status filter">
+                    <option value="active">Active records</option>
+                    <option value="archived">Archived records</option>
+                    <option value="all">All records</option>
+                </select>
+            </div>
             <input id="record-search" class="search-input" placeholder="Search SS number, name, or email">
             <div id="record-list" class="record-list"></div>
             <p id="empty-records" class="empty-state hidden">No E-1 records found.</p>
         </aside>
     </main>
+</div>
+
+<div class="modal-backdrop hidden" id="review-modal" role="dialog" aria-modal="true" aria-labelledby="review-title">
+    <div class="review-dialog">
+        <div class="review-header">
+            <div>
+                <p class="kicker">Review before saving</p>
+                <h2 id="review-title">Confirm E-1 Record</h2>
+            </div>
+            <button type="button" class="icon-only" id="review-close" aria-label="Close review">X</button>
+        </div>
+        <div class="review-content" id="review-content"></div>
+        <div class="review-actions">
+            <button type="button" class="btn btn-secondary" id="review-back">Back to Edit</button>
+            <button type="button" class="btn btn-primary" id="review-confirm">Confirm and Save</button>
+        </div>
+    </div>
 </div>
 <script src="script.js"></script>
 </body>

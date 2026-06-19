@@ -22,6 +22,23 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+let appTablesReady = null;
+function ensureAppTables() {
+    if (!appTablesReady) {
+        appTablesReady = pool.query(`
+            CREATE TABLE IF NOT EXISTS Record_Status (
+                SS_Number varchar(15) NOT NULL,
+                Is_Archived tinyint(1) NOT NULL DEFAULT 0,
+                Created_At timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                Updated_At timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                Archived_At timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (SS_Number)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+    }
+    return appTablesReady;
+}
+
 function emptyToNull(value) {
     if (value === undefined || value === null || value === '') return null;
     return value;
@@ -54,7 +71,14 @@ async function nextBeneficiaryId(conn) {
 }
 
 async function getE1Record(ssNumber) {
-    const [[registrant]] = await pool.query('SELECT * FROM Registrant_Table WHERE SS_Number = ?', [ssNumber]);
+    await ensureAppTables();
+    const [[registrant]] = await pool.query(
+        `SELECT r.*, COALESCE(s.Is_Archived, 0) AS Is_Archived, s.Created_At, s.Updated_At, s.Archived_At
+         FROM Registrant_Table r
+         LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
+         WHERE r.SS_Number = ?`,
+        [ssNumber]
+    );
     if (!registrant) return null;
 
     const [[spouse]] = await pool.query('SELECT * FROM Spouse_Table WHERE SS_Number = ?', [ssNumber]);
@@ -80,6 +104,7 @@ async function getE1Record(ssNumber) {
 }
 
 async function saveE1Record(payload, existingSsNumber = null) {
+    await ensureAppTables();
     const d = payload.registrant || payload;
     const ssNumber = existingSsNumber || d.SS_Number;
     if (!ssNumber) {
@@ -97,6 +122,18 @@ async function saveE1Record(payload, existingSsNumber = null) {
             const err = new Error('SS Number cannot be changed while editing.');
             err.status = 400;
             throw err;
+        }
+
+        if (!existingSsNumber) {
+            const [duplicates] = await conn.query(
+                'SELECT SS_Number FROM Registrant_Table WHERE SS_Number = ? LIMIT 1',
+                [ssNumber]
+            );
+            if (duplicates.length) {
+                const err = new Error('SS Number already exists. Use Edit instead, or choose another SS Number.');
+                err.status = 409;
+                throw err;
+            }
         }
 
         await conn.query(
@@ -221,6 +258,16 @@ async function saveE1Record(payload, existingSsNumber = null) {
             );
         }
 
+        await conn.query(
+            `INSERT INTO Record_Status (SS_Number, Is_Archived, Created_At, Updated_At, Archived_At)
+             VALUES (?, 0, NOW(), NOW(), NULL)
+             ON DUPLICATE KEY UPDATE
+                Is_Archived = 0,
+                Updated_At = NOW(),
+                Archived_At = NULL`,
+            [ssNumber]
+        );
+
         await conn.commit();
         return ssNumber;
     } catch (err) {
@@ -234,25 +281,90 @@ async function saveE1Record(payload, existingSsNumber = null) {
 // ─── E-1 PERSONAL RECORD DOCUMENT CRUD ────────────────────────
 app.get('/api/e1-records', async (req, res) => {
     try {
+        await ensureAppTables();
         const search = req.query.search ? `%${req.query.search}%` : null;
+        const status = req.query.status || 'active';
         let query = `
             SELECT
                 r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.Mobile_Number,
                 r.Email_Address, r.Employment_Type,
-                COUNT(b.Ben_ID) AS Beneficiary_Count
+                COUNT(b.Ben_ID) AS Beneficiary_Count,
+                COALESCE(s.Is_Archived, 0) AS Is_Archived,
+                s.Created_At, s.Updated_At, s.Archived_At
             FROM Registrant_Table r
-            LEFT JOIN Beneficiaries_Table b ON b.SS_Number = r.SS_Number`;
+            LEFT JOIN Beneficiaries_Table b ON b.SS_Number = r.SS_Number
+            LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number`;
+        const where = [];
         const params = [];
         if (search) {
-            query += ' WHERE r.SS_Number LIKE ? OR r.Registrant_Name LIKE ? OR r.Email_Address LIKE ?';
+            where.push('(r.SS_Number LIKE ? OR r.Registrant_Name LIKE ? OR r.Email_Address LIKE ?)');
             params.push(search, search, search);
         }
+        if (status === 'archived') {
+            where.push('COALESCE(s.Is_Archived, 0) = 1');
+        } else if (status !== 'all') {
+            where.push('COALESCE(s.Is_Archived, 0) = 0');
+        }
+        if (where.length) query += ` WHERE ${where.join(' AND ')}`;
         query += `
             GROUP BY r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status,
-                     r.Mobile_Number, r.Email_Address, r.Employment_Type
+                     r.Mobile_Number, r.Email_Address, r.Employment_Type,
+                     s.Is_Archived, s.Created_At, s.Updated_At, s.Archived_At
             ORDER BY r.SS_Number DESC`;
         const [rows] = await pool.query(query, params);
         res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/e1-records/summary', async (req, res) => {
+    try {
+        await ensureAppTables();
+        const [[summary]] = await pool.query(`
+            SELECT
+                SUM(CASE WHEN COALESCE(s.Is_Archived, 0) = 0 THEN 1 ELSE 0 END) AS totalActive,
+                SUM(CASE WHEN COALESCE(s.Is_Archived, 0) = 1 THEN 1 ELSE 0 END) AS archived,
+                SUM(CASE WHEN COALESCE(s.Is_Archived, 0) = 0 AND r.Employment_Type = 'SE' THEN 1 ELSE 0 END) AS selfEmployed,
+                SUM(CASE WHEN COALESCE(s.Is_Archived, 0) = 0 AND r.Employment_Type = 'OFW' THEN 1 ELSE 0 END) AS ofw,
+                SUM(CASE WHEN COALESCE(s.Is_Archived, 0) = 0 AND r.Employment_Type = 'NWS' THEN 1 ELSE 0 END) AS nonWorkingSpouse
+            FROM Registrant_Table r
+            LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
+        `);
+        const [[beneficiaries]] = await pool.query(`
+            SELECT COUNT(b.Ben_ID) AS totalBeneficiaries
+            FROM Beneficiaries_Table b
+            INNER JOIN Registrant_Table r ON r.SS_Number = b.SS_Number
+            LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
+            WHERE COALESCE(s.Is_Archived, 0) = 0
+        `);
+        res.json({
+            totalActive: Number(summary.totalActive || 0),
+            archived: Number(summary.archived || 0),
+            selfEmployed: Number(summary.selfEmployed || 0),
+            ofw: Number(summary.ofw || 0),
+            nonWorkingSpouse: Number(summary.nonWorkingSpouse || 0),
+            totalBeneficiaries: Number(beneficiaries.totalBeneficiaries || 0)
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/e1-records/check/:id', async (req, res) => {
+    try {
+        await ensureAppTables();
+        const [[record]] = await pool.query(
+            `SELECT r.SS_Number, COALESCE(s.Is_Archived, 0) AS Is_Archived
+             FROM Registrant_Table r
+             LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
+             WHERE r.SS_Number = ?`,
+            [req.params.id]
+        );
+        res.json({
+            exists: !!record,
+            archived: !!record?.Is_Archived
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -290,9 +402,39 @@ app.put('/api/e1-records/:id', async (req, res) => {
 
 app.delete('/api/e1-records/:id', async (req, res) => {
     try {
-        const [result] = await pool.query('DELETE FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
-        if (!result.affectedRows) return res.status(404).json({ error: 'E-1 record not found.' });
-        res.json({ message: 'E-1 record deleted.' });
+        await ensureAppTables();
+        const [[record]] = await pool.query('SELECT SS_Number FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
+        if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
+        await pool.query(
+            `INSERT INTO Record_Status (SS_Number, Is_Archived, Created_At, Updated_At, Archived_At)
+             VALUES (?, 1, NOW(), NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                Is_Archived = 1,
+                Updated_At = NOW(),
+                Archived_At = NOW()`,
+            [req.params.id]
+        );
+        res.json({ message: 'E-1 record archived.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.patch('/api/e1-records/:id/restore', async (req, res) => {
+    try {
+        await ensureAppTables();
+        const [[record]] = await pool.query('SELECT SS_Number FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
+        if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
+        await pool.query(
+            `INSERT INTO Record_Status (SS_Number, Is_Archived, Created_At, Updated_At, Archived_At)
+             VALUES (?, 0, NOW(), NOW(), NULL)
+             ON DUPLICATE KEY UPDATE
+                Is_Archived = 0,
+                Updated_At = NOW(),
+                Archived_At = NULL`,
+            [req.params.id]
+        );
+        res.json({ message: 'E-1 record restored.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
