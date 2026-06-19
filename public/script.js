@@ -4,8 +4,16 @@ const formStatus = document.getElementById('form-status');
 const recordSearch = document.getElementById('record-search');
 const childrenList = document.getElementById('children-list');
 const otherBeneficiariesList = document.getElementById('other-beneficiaries-list');
+const themeToggle = document.getElementById('theme-toggle');
+const themeToggleLabel = document.getElementById('theme-toggle-label');
 
 let editingId = null;
+const firstNames = ['Miguel', 'Maria', 'Juan', 'Teresa', 'Paolo', 'Isabella', 'Rafael', 'Carmen', 'Luisa', 'Antonio', 'Elena', 'Jose'];
+const lastNames = ['Santos', 'Reyes', 'Dela Cruz', 'Garcia', 'Torres', 'Navarro', 'Bautista', 'Mendoza', 'Flores', 'Ramos', 'Castillo', 'Gonzales'];
+const cities = ['Manila', 'Quezon City', 'Makati', 'Pasig', 'Taguig', 'Cebu City', 'Davao City', 'Baguio', 'Iloilo City', 'Antipolo'];
+const religions = ['Catholic', 'Iglesia ni Cristo', 'Islam', 'Protestant', 'None'];
+const professions = ['Freelance Designer', 'Online Seller', 'Consultant', 'Driver', 'Shop Owner', 'Tutor', 'Food Vendor'];
+const relationships = ['Parent', 'Sibling', 'Relative'];
 
 function value(id) {
     return document.getElementById(id)?.value?.trim() || '';
@@ -72,6 +80,45 @@ function employmentLabel(value) {
 function showStatus(message, tone = 'neutral') {
     formStatus.textContent = message;
     formStatus.dataset.tone = tone;
+}
+
+function randomItem(items) {
+    return items[Math.floor(Math.random() * items.length)];
+}
+
+function randomNumber(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomDate(startYear, endYear) {
+    const year = randomNumber(startYear, endYear);
+    const month = String(randomNumber(1, 12)).padStart(2, '0');
+    const day = String(randomNumber(1, 28)).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function randomFullName() {
+    return `${randomItem(lastNames)}, ${randomItem(firstNames)} ${randomItem(lastNames)}`;
+}
+
+function randomSsNumber() {
+    return `${randomNumber(10, 99)}-${randomNumber(1000000, 9999999)}-${randomNumber(0, 9)}`;
+}
+
+function randomTin() {
+    return `${randomNumber(100, 999)}-${randomNumber(100, 999)}-${randomNumber(100, 999)}-000`;
+}
+
+function randomMoney(min, max) {
+    return randomNumber(min, max).toFixed(2);
+}
+
+function applyTheme(theme) {
+    const isDark = theme === 'dark';
+    document.documentElement.dataset.theme = theme;
+    themeToggle.setAttribute('aria-pressed', String(isDark));
+    themeToggleLabel.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    localStorage.setItem('sss-e1-theme', theme);
 }
 
 function createPersonRow(type, data = {}) {
@@ -226,6 +273,63 @@ function resetForm() {
     showStatus('');
 }
 
+function fillRandomInfo() {
+    resetForm();
+
+    const firstName = randomItem(firstNames).toLowerCase();
+    const lastName = randomItem(lastNames).toLowerCase().replace(/\s+/g, '');
+    const city = randomItem(cities);
+    const employmentType = randomItem(['SE', 'OFW', 'NWS']);
+
+    setValue('SS_Number', randomSsNumber());
+    setValue('Registrant_Name', randomFullName());
+    setValue('Date_of_Birth', randomDate(1965, 2004));
+    setValue('Sex', randomItem(['M', 'F']));
+    setValue('Civil_Status', randomItem(['S', 'M', 'W', 'LS']));
+    setValue('TIN', randomTin());
+    setValue('Nationality', 'Filipino');
+    setValue('Religion', randomItem(religions));
+    setValue('POB', `${city}, Philippines`);
+    setValue('Home_Address', `${randomNumber(10, 999)} ${randomItem(lastNames)} Street, Barangay ${randomItem(firstNames)}, ${city}, Philippines ${randomNumber(1000, 9999)}`);
+    setValue('Mobile_Number', `09${randomNumber(100000000, 999999999)}`);
+    setValue('Email_Address', `${firstName}.${lastName}${randomNumber(10, 99)}@example.com`);
+    setValue('Telephone_Number', `02-${randomNumber(1000, 9999)}-${randomNumber(1000, 9999)}`);
+    setValue('Father_Name', randomFullName());
+    setValue('Mother_Maiden_Name', randomFullName());
+    setValue('Spouse_Name', randomFullName());
+    setValue('Spouse_DOB', randomDate(1965, 2001));
+
+    childrenList.innerHTML = '';
+    for (let i = 0; i < randomNumber(1, 3); i += 1) {
+        childrenList.appendChild(createPersonRow('child', {
+            Ben_Name: randomFullName(),
+            Ben_DOB: randomDate(2008, 2023)
+        }));
+    }
+
+    otherBeneficiariesList.innerHTML = '';
+    for (let i = 0; i < randomNumber(1, 2); i += 1) {
+        otherBeneficiariesList.appendChild(createPersonRow('other', {
+            Ben_Name: randomFullName(),
+            Ben_DOB: randomDate(1960, 2006),
+            Ben_Relationship: randomItem(relationships)
+        }));
+    }
+
+    document.querySelector(`input[name="Employment_Type"][value="${employmentType}"]`).checked = true;
+    setValue('SE_Profession', randomItem(professions));
+    setValue('SE_Year_Started', randomNumber(2005, 2025));
+    setValue('SE_Monthly_Earnings', randomMoney(15000, 90000));
+    setValue('OFW_Foreign_Address', `${randomNumber(10, 999)} Main Street, ${randomItem(['Dubai', 'Doha', 'Singapore', 'Hong Kong', 'Riyadh'])}`);
+    setValue('OFW_Monthly_Earnings', randomMoney(40000, 180000));
+    setChecked('OFW_FlexiFund_Flag', Math.random() > 0.5);
+    setValue('WS_SSN', randomSsNumber());
+    setValue('WS_Income', randomMoney(20000, 120000));
+
+    updateEmploymentPanels();
+    showStatus('Random sample data filled in. Review it, then save when ready.', 'success');
+}
+
 async function editRecord(ssNumber) {
     const record = await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}`);
     const r = record.registrant;
@@ -303,6 +407,10 @@ form.addEventListener('submit', async event => {
 });
 
 document.getElementById('reset-form').addEventListener('click', resetForm);
+document.getElementById('random-fill').addEventListener('click', fillRandomInfo);
+themeToggle.addEventListener('click', () => {
+    applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+});
 document.getElementById('add-child').addEventListener('click', () => {
     childrenList.appendChild(createPersonRow('child'));
 });
@@ -315,4 +423,5 @@ document.querySelectorAll('input[name="Employment_Type"]').forEach(input => {
 recordSearch.addEventListener('input', () => loadRecords(recordSearch.value));
 
 resetForm();
+applyTheme(localStorage.getItem('sss-e1-theme') || 'light');
 loadRecords().catch(error => showStatus(error.message, 'error'));
