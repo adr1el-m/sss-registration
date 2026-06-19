@@ -23,6 +23,14 @@ const pool = mysql.createPool({
 });
 
 let appTablesReady = null;
+let e1WriteQueue = Promise.resolve();
+
+function enqueueE1Write(task) {
+    const run = e1WriteQueue.then(task, task);
+    e1WriteQueue = run.catch(() => {});
+    return run;
+}
+
 function ensureAppTables() {
     if (!appTablesReady) {
         appTablesReady = (async () => {
@@ -60,7 +68,7 @@ function ensureAppTables() {
             `);
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS Beneficiaries_Table (
-                    Ben_ID varchar(10) NOT NULL,
+                    Ben_ID varchar(20) NOT NULL,
                     SS_Number varchar(15) NOT NULL,
                     Ben_Name varchar(100) NOT NULL,
                     Ben_DOB date DEFAULT NULL,
@@ -70,6 +78,7 @@ function ensureAppTables() {
                     CONSTRAINT fk_beneficiaries_ssn FOREIGN KEY (SS_Number) REFERENCES Registrant_Table (SS_Number) ON DELETE CASCADE ON UPDATE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             `);
+            await pool.query('ALTER TABLE Beneficiaries_Table MODIFY Ben_ID varchar(20) NOT NULL');
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS Self_Employed_Table (
                     SS_Number varchar(15) NOT NULL,
@@ -148,14 +157,8 @@ function civilStatusCode(value) {
     return map[value] || value || null;
 }
 
-async function nextBeneficiaryId(conn) {
-    const [rows] = await conn.query(
-        `SELECT MAX(CAST(SUBSTRING(Ben_ID, 2) AS UNSIGNED)) AS maxId
-         FROM Beneficiaries_Table
-         WHERE Ben_ID REGEXP '^B[0-9]+$'`
-    );
-    const next = Number(rows[0]?.maxId || 0) + 1;
-    return `B${String(next).padStart(5, '0')}`;
+function beneficiaryIdFor(ssNumber, index) {
+    return `B${String(ssNumber || '').replace(/\D/g, '')}-${String(index + 1).padStart(2, '0')}`;
 }
 
 async function logActivity(action, ssNumber = null, recordName = null, details = null) {
@@ -165,6 +168,21 @@ async function logActivity(action, ssNumber = null, recordName = null, details =
          VALUES (?, ?, ?, ?)`,
         [action, ssNumber, recordName, details ? JSON.stringify(details) : null]
     );
+}
+
+async function safeLogActivity(action, ssNumber = null, recordName = null, details = null) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await logActivity(action, ssNumber, recordName, details);
+            return;
+        } catch (error) {
+            if (!isRetryableDbLock(error) || attempt === 3) {
+                console.warn(`Activity log skipped for ${action}: ${error.message}`);
+                return;
+            }
+            await delay(25 * attempt);
+        }
+    }
 }
 
 async function getE1Record(ssNumber) {
@@ -221,7 +239,18 @@ const qualityIssueExpression = `
     END
 `;
 
-async function saveE1Record(payload, existingSsNumber = null) {
+function isRetryableDbLock(error) {
+    return error?.code === 'ER_LOCK_DEADLOCK'
+        || error?.code === 'ER_LOCK_WAIT_TIMEOUT'
+        || error?.errno === 1213
+        || error?.errno === 1205;
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function saveE1RecordOnce(payload, existingSsNumber = null) {
     await ensureAppTables();
     const d = payload.registrant || payload;
     const ssNumber = existingSsNumber || d.SS_Number;
@@ -303,7 +332,7 @@ async function saveE1Record(payload, existingSsNumber = null) {
                  VALUES (?, ?, ?, ?)`,
                 [
                     ssNumber,
-                    spouse.Spouse_SSN || `SP-${Date.now().toString().slice(-12)}`,
+                    spouse.Spouse_SSN || `SP-${String(ssNumber).replace(/\D/g, '')}`,
                     spouse.Spouse_Name,
                     emptyToNull(spouse.Spouse_DOB)
                 ]
@@ -319,12 +348,12 @@ async function saveE1Record(payload, existingSsNumber = null) {
             }))
         ].filter(beneficiary => beneficiary.Ben_Name);
 
-        for (const beneficiary of beneficiaryRows) {
+        for (const [index, beneficiary] of beneficiaryRows.entries()) {
             await conn.query(
                 `INSERT INTO Beneficiaries_Table (Ben_ID, SS_Number, Ben_Name, Ben_DOB, Ben_Relationship)
                  VALUES (?, ?, ?, ?, ?)`,
                 [
-                    beneficiary.Ben_ID || await nextBeneficiaryId(conn),
+                    beneficiary.Ben_ID || beneficiaryIdFor(ssNumber, index),
                     ssNumber,
                     beneficiary.Ben_Name,
                     emptyToNull(beneficiary.Ben_DOB),
@@ -394,6 +423,20 @@ async function saveE1Record(payload, existingSsNumber = null) {
     } finally {
         conn.release();
     }
+}
+
+async function saveE1Record(payload, existingSsNumber = null) {
+    return enqueueE1Write(async () => {
+        const maxAttempts = 4;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                return await saveE1RecordOnce(payload, existingSsNumber);
+            } catch (error) {
+                if (!isRetryableDbLock(error) || attempt === maxAttempts) throw error;
+                await delay(35 * attempt);
+            }
+        }
+    });
 }
 
 // ─── E-1 PERSONAL RECORD DOCUMENT CRUD ────────────────────────
@@ -567,7 +610,7 @@ app.get('/api/e1-records/:id', async (req, res) => {
 app.post('/api/e1-records', async (req, res) => {
     try {
         const id = await saveE1Record(req.body);
-        await logActivity('create', id, req.body?.registrant?.Registrant_Name || req.body?.Registrant_Name, {
+        await safeLogActivity('create', id, req.body?.registrant?.Registrant_Name || req.body?.Registrant_Name, {
             employmentType: req.body?.registrant?.Employment_Type || req.body?.Employment_Type
         });
         res.status(201).json({ message: 'E-1 record created.', id });
@@ -581,7 +624,7 @@ app.put('/api/e1-records/:id', async (req, res) => {
         const record = await getE1Record(req.params.id);
         if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
         const id = await saveE1Record(req.body, req.params.id);
-        await logActivity('update', id, req.body?.registrant?.Registrant_Name || record.registrant?.Registrant_Name, {
+        await safeLogActivity('update', id, req.body?.registrant?.Registrant_Name || record.registrant?.Registrant_Name, {
             employmentType: req.body?.registrant?.Employment_Type || record.registrant?.Employment_Type
         });
         res.json({ message: 'E-1 record updated.', id });
@@ -604,7 +647,7 @@ app.delete('/api/e1-records/:id', async (req, res) => {
                 Archived_At = NOW()`,
             [req.params.id]
         );
-        await logActivity('archive', req.params.id, record.Registrant_Name);
+        await safeLogActivity('archive', req.params.id, record.Registrant_Name);
         res.json({ message: 'E-1 record archived.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -625,7 +668,7 @@ app.patch('/api/e1-records/:id/restore', async (req, res) => {
                 Archived_At = NULL`,
             [req.params.id]
         );
-        await logActivity('restore', req.params.id, record.Registrant_Name);
+        await safeLogActivity('restore', req.params.id, record.Registrant_Name);
         res.json({ message: 'E-1 record restored.' });
     } catch (err) {
         res.status(500).json({ error: err.message });

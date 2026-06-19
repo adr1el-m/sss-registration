@@ -92,9 +92,17 @@
                             <span>SS Number</span>
                             <input id="SS_Number" name="SS_Number" required readonly maxlength="15" pattern="[0-9]{2}-[0-9]{7}-[0-9]" title="Generated automatically" placeholder="Generated automatically">
                         </label>
-                        <label class="span-3">
-                            <span>Full Name</span>
-                            <input id="Registrant_Name" name="Registrant_Name" required placeholder="Last name, First name Middle name">
+                        <label>
+                            <span>First Name</span>
+                            <input id="Registrant_First_Name" required placeholder="First name">
+                        </label>
+                        <label>
+                            <span>Middle Name</span>
+                            <input id="Registrant_Middle_Name" placeholder="Middle name">
+                        </label>
+                        <label>
+                            <span>Last Name</span>
+                            <input id="Registrant_Last_Name" required placeholder="Last name">
                         </label>
                         <label>
                             <span>Date of Birth</span>
@@ -139,9 +147,41 @@
                             <span>Place of Birth</span>
                             <input id="POB" name="POB" placeholder="City/Municipality, Province">
                         </label>
-                        <label class="span-4">
-                            <span>Home Address</span>
-                            <input id="Home_Address" name="Home_Address" required placeholder="Room/Floor/Unit, house/lot/block, street, subdivision, barangay, city, province, country, ZIP">
+                        <label>
+                            <span>Room/Floor/Unit</span>
+                            <input id="Address_Unit" placeholder="Unit / floor">
+                        </label>
+                        <label>
+                            <span>House/Lot/Block No.</span>
+                            <input id="Address_House_Lot" placeholder="House / lot / block">
+                        </label>
+                        <label>
+                            <span>Street Name</span>
+                            <input id="Address_Street" placeholder="Street">
+                        </label>
+                        <label>
+                            <span>Subdivision</span>
+                            <input id="Address_Subdivision" placeholder="Subdivision">
+                        </label>
+                        <label>
+                            <span>Barangay/District/Locality</span>
+                            <input id="Address_Barangay" required placeholder="Barangay">
+                        </label>
+                        <label>
+                            <span>City/Municipality</span>
+                            <input id="Address_City" required placeholder="City / municipality">
+                        </label>
+                        <label>
+                            <span>Province</span>
+                            <input id="Address_Province" required placeholder="Province">
+                        </label>
+                        <label>
+                            <span>Country</span>
+                            <input id="Address_Country" placeholder="Philippines">
+                        </label>
+                        <label>
+                            <span>ZIP Code</span>
+                            <input id="Address_Zip" required inputmode="numeric" maxlength="10" placeholder="ZIP">
                         </label>
                         <label>
                             <span>Mobile/Cellphone Number</span>
@@ -155,13 +195,29 @@
                             <span>Telephone Number</span>
                             <input id="Telephone_Number" name="Telephone_Number" maxlength="15">
                         </label>
-                        <label class="span-2">
-                            <span>Father</span>
-                            <input id="Father_Name" name="Father_Name" placeholder="Last name, First name Middle name">
+                        <label>
+                            <span>Father First Name</span>
+                            <input id="Father_First_Name" placeholder="First name">
                         </label>
-                        <label class="span-2">
-                            <span>Mother's Maiden Name</span>
-                            <input id="Mother_Maiden_Name" name="Mother_Maiden_Name" required placeholder="Last name, First name Middle name">
+                        <label>
+                            <span>Father Middle Name</span>
+                            <input id="Father_Middle_Name" placeholder="Middle name">
+                        </label>
+                        <label>
+                            <span>Father Last Name</span>
+                            <input id="Father_Last_Name" placeholder="Last name">
+                        </label>
+                        <label>
+                            <span>Mother First Name</span>
+                            <input id="Mother_First_Name" required placeholder="First name">
+                        </label>
+                        <label>
+                            <span>Mother Middle Name</span>
+                            <input id="Mother_Middle_Name" placeholder="Middle name">
+                        </label>
+                        <label>
+                            <span>Mother Maiden Last Name</span>
+                            <input id="Mother_Last_Name" required placeholder="Maiden last name">
                         </label>
                     </div>
                 </section>
@@ -175,9 +231,17 @@
                         </label>
                     </div>
                     <div class="form-grid">
-                        <label class="span-3">
-                            <span>Spouse Name</span>
-                            <input id="Spouse_Name" name="Spouse_Name" placeholder="Last name, First name Middle name">
+                        <label>
+                            <span>Spouse First Name</span>
+                            <input id="Spouse_First_Name" placeholder="First name">
+                        </label>
+                        <label>
+                            <span>Spouse Middle Name</span>
+                            <input id="Spouse_Middle_Name" placeholder="Middle name">
+                        </label>
+                        <label>
+                            <span>Spouse Last Name</span>
+                            <input id="Spouse_Last_Name" placeholder="Last name">
                         </label>
                         <label>
                             <span>Spouse Date of Birth</span>

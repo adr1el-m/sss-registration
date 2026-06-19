@@ -51,6 +51,79 @@ function setValue(id, inputValue) {
     if (element) element.value = inputValue ?? '';
 }
 
+function compactJoin(parts, separator = ' ') {
+    return parts.map(part => String(part || '').trim()).filter(Boolean).join(separator);
+}
+
+function composeName(first, middle, last) {
+    const givenNames = compactJoin([first, middle]);
+    if (last && givenNames) return `${last.trim()}, ${givenNames}`;
+    return compactJoin([first, middle, last]);
+}
+
+function composeNameFromPrefix(prefix) {
+    return composeName(
+        value(`${prefix}_First_Name`),
+        value(`${prefix}_Middle_Name`),
+        value(`${prefix}_Last_Name`)
+    );
+}
+
+function splitStoredName(inputValue) {
+    const raw = String(inputValue || '').trim();
+    if (!raw) return { first: '', middle: '', last: '' };
+    if (raw.includes(',')) {
+        const [last, rest = ''] = raw.split(',');
+        const names = rest.trim().split(/\s+/).filter(Boolean);
+        return {
+            first: names.shift() || '',
+            middle: names.join(' '),
+            last: last.trim()
+        };
+    }
+    const names = raw.split(/\s+/).filter(Boolean);
+    if (names.length <= 1) return { first: names[0] || '', middle: '', last: '' };
+    const first = names.shift();
+    const last = names.pop();
+    return { first, middle: names.join(' '), last };
+}
+
+function setNameParts(prefix, inputValue) {
+    const parts = splitStoredName(inputValue);
+    setValue(`${prefix}_First_Name`, parts.first);
+    setValue(`${prefix}_Middle_Name`, parts.middle);
+    setValue(`${prefix}_Last_Name`, parts.last);
+}
+
+function composeHomeAddress() {
+    return compactJoin([
+        value('Address_Unit'),
+        value('Address_House_Lot'),
+        value('Address_Street'),
+        value('Address_Subdivision'),
+        value('Address_Barangay'),
+        value('Address_City'),
+        value('Address_Province'),
+        value('Address_Country'),
+        value('Address_Zip')
+    ], ', ');
+}
+
+function setAddressParts(inputValue) {
+    const parts = String(inputValue || '').split(',').map(part => part.trim());
+    [
+        'Address_Unit',
+        'Address_House_Lot',
+        'Address_Street',
+        'Address_Subdivision',
+        'Address_Barangay',
+        'Address_City',
+        'Address_Province',
+        'Address_Country',
+        'Address_Zip'
+    ].forEach((id, index) => setValue(id, parts[index] || ''));
+}
+
 function setChecked(id, checked) {
     const element = document.getElementById(id);
     if (element) element.checked = !!checked;
@@ -202,13 +275,22 @@ function applyTheme(theme) {
 
 function createPersonRow(type, data = {}) {
     const row = document.createElement('div');
+    const nameParts = splitStoredName(data.Ben_Name);
     row.className = 'repeat-row';
     row.dataset.rowType = type;
     row.innerHTML = `
         <input type="hidden" data-field="Ben_ID" value="${escapeHtml(data.Ben_ID)}">
         <label>
-            <span>Name</span>
-            <input data-field="Ben_Name" value="${escapeHtml(data.Ben_Name)}" placeholder="Last name, First name Middle name">
+            <span>First Name</span>
+            <input data-field="Ben_First_Name" value="${escapeHtml(nameParts.first)}" placeholder="First name">
+        </label>
+        <label>
+            <span>Middle Name</span>
+            <input data-field="Ben_Middle_Name" value="${escapeHtml(nameParts.middle)}" placeholder="Middle name">
+        </label>
+        <label>
+            <span>Last Name</span>
+            <input data-field="Ben_Last_Name" value="${escapeHtml(nameParts.last)}" placeholder="Last name">
         </label>
         <label>
             <span>Date of Birth</span>
@@ -245,6 +327,7 @@ function collectRows(container, type) {
             row.querySelectorAll('[data-field]').forEach(input => {
                 output[input.dataset.field] = input.value.trim();
             });
+            output.Ben_Name = composeName(output.Ben_First_Name, output.Ben_Middle_Name, output.Ben_Last_Name);
             if (type === 'child') output.Ben_Relationship = 'Child';
             return output;
         })
@@ -267,7 +350,7 @@ function buildPayload() {
     return {
         registrant: {
             SS_Number: value('SS_Number'),
-            Registrant_Name: value('Registrant_Name'),
+            Registrant_Name: composeNameFromPrefix('Registrant'),
             Date_of_Birth: value('Date_of_Birth'),
             Sex: value('Sex'),
             Civil_Status: value('Civil_Status'),
@@ -275,16 +358,16 @@ function buildPayload() {
             Nationality: value('Nationality'),
             Religion: value('Religion'),
             POB: value('POB'),
-            Home_Address: value('Home_Address'),
+            Home_Address: composeHomeAddress(),
             Mobile_Number: value('Mobile_Number'),
             Email_Address: value('Email_Address'),
             Telephone_Number: value('Telephone_Number'),
-            Father_Name: value('Father_Name'),
-            Mother_Maiden_Name: value('Mother_Maiden_Name'),
+            Father_Name: composeNameFromPrefix('Father'),
+            Mother_Maiden_Name: composeNameFromPrefix('Mother'),
             Employment_Type: employmentType
         },
         spouse: {
-            Spouse_Name: value('Spouse_Name'),
+            Spouse_Name: composeNameFromPrefix('Spouse'),
             Spouse_DOB: value('Spouse_DOB')
         },
         children: collectRows(childrenList, 'child'),
@@ -382,12 +465,17 @@ function validatePayload(payload) {
 
     [
         ['SS_Number', r.SS_Number, 'SS Number is required.'],
-        ['Registrant_Name', r.Registrant_Name, 'Full name is required.'],
+        ['Registrant_First_Name', value('Registrant_First_Name'), 'Registrant first name is required.'],
+        ['Registrant_Last_Name', value('Registrant_Last_Name'), 'Registrant last name is required.'],
         ['Date_of_Birth', r.Date_of_Birth, 'Date of birth is required.'],
         ['Sex', r.Sex, 'Sex is required.'],
         ['Civil_Status', r.Civil_Status, 'Civil status is required.'],
-        ['Home_Address', r.Home_Address, 'Home address is required.'],
-        ['Mother_Maiden_Name', r.Mother_Maiden_Name, "Mother's maiden name is required."]
+        ['Address_Barangay', value('Address_Barangay'), 'Barangay, district, or locality is required.'],
+        ['Address_City', value('Address_City'), 'City or municipality is required.'],
+        ['Address_Province', value('Address_Province'), 'Province is required.'],
+        ['Address_Zip', value('Address_Zip'), 'ZIP code is required.'],
+        ['Mother_First_Name', value('Mother_First_Name'), "Mother's first name is required."],
+        ['Mother_Last_Name', value('Mother_Last_Name'), "Mother's maiden last name is required."]
     ].forEach(([id, fieldValue, message]) => {
         if (!fieldValue) errors.push({ id, message });
     });
@@ -672,6 +760,7 @@ function resetForm() {
     setValue('SS_Number', randomSsNumber());
     document.getElementById('form-mode').textContent = 'New record';
     document.getElementById('save-record').textContent = 'Save E-1 Record';
+    setValue('Address_Country', 'Philippines');
     childrenList.innerHTML = '';
     otherBeneficiariesList.innerHTML = '';
     ensureInitialRows();
@@ -692,7 +781,7 @@ function fillRandomInfo() {
     const employmentType = randomItem(['SE', 'OFW', 'NWS']);
 
     setValue('SS_Number', randomSsNumber());
-    setValue('Registrant_Name', randomFullName());
+    setNameParts('Registrant', randomFullName());
     setValue('Date_of_Birth', randomDate(1965, 2004));
     setValue('Sex', randomItem(['M', 'F']));
     setValue('Civil_Status', randomItem(['S', 'M', 'W', 'LS']));
@@ -700,13 +789,21 @@ function fillRandomInfo() {
     setValue('Nationality', 'Filipino');
     setValue('Religion', randomItem(religions));
     setValue('POB', `${city}, Philippines`);
-    setValue('Home_Address', `${randomNumber(10, 999)} ${randomItem(lastNames)} Street, Barangay ${randomItem(firstNames)}, ${city}, Philippines ${randomNumber(1000, 9999)}`);
+    setValue('Address_Unit', `Unit ${randomNumber(1, 20)}`);
+    setValue('Address_House_Lot', String(randomNumber(10, 999)));
+    setValue('Address_Street', `${randomItem(lastNames)} Street`);
+    setValue('Address_Subdivision', randomItem(['Greenview', 'San Isidro Homes', 'Riverside Village', '']));
+    setValue('Address_Barangay', `Barangay ${randomItem(firstNames)}`);
+    setValue('Address_City', city);
+    setValue('Address_Province', randomItem(['Metro Manila', 'Cebu', 'Davao del Sur', 'Rizal', 'Benguet']));
+    setValue('Address_Country', 'Philippines');
+    setValue('Address_Zip', randomNumber(1000, 9999));
     setValue('Mobile_Number', `09${randomNumber(100000000, 999999999)}`);
     setValue('Email_Address', `${firstName}.${lastName}${randomNumber(10, 99)}@example.com`);
     setValue('Telephone_Number', `02-${randomNumber(1000, 9999)}-${randomNumber(1000, 9999)}`);
-    setValue('Father_Name', randomFullName());
-    setValue('Mother_Maiden_Name', randomFullName());
-    setValue('Spouse_Name', randomFullName());
+    setNameParts('Father', randomFullName());
+    setNameParts('Mother', randomFullName());
+    setNameParts('Spouse', randomFullName());
     setValue('Spouse_DOB', randomDate(1965, 2001));
 
     childrenList.innerHTML = '';
@@ -1160,16 +1257,21 @@ async function editRecord(ssNumber) {
     const r = record.registrant;
     editingId = r.SS_Number;
 
+    setValue('SS_Number', r.SS_Number);
+    setNameParts('Registrant', r.Registrant_Name);
+    setAddressParts(r.Home_Address);
+    setNameParts('Father', r.Father_Name);
+    setNameParts('Mother', r.Mother_Maiden_Name);
     [
-        'SS_Number', 'Registrant_Name', 'TIN', 'Nationality', 'Religion', 'POB', 'Home_Address',
-        'Mobile_Number', 'Email_Address', 'Telephone_Number', 'Father_Name', 'Mother_Maiden_Name'
+        'TIN', 'Nationality', 'Religion', 'POB',
+        'Mobile_Number', 'Email_Address', 'Telephone_Number'
     ].forEach(field => setValue(field, r[field]));
     setValue('Date_of_Birth', isoDate(r.Date_of_Birth));
     setValue('Sex', r.Sex);
     setValue('Civil_Status', r.Civil_Status);
     document.querySelector(`input[name="Employment_Type"][value="${r.Employment_Type || 'SE'}"]`).checked = true;
 
-    setValue('Spouse_Name', record.spouse?.Spouse_Name || '');
+    setNameParts('Spouse', record.spouse?.Spouse_Name || '');
     setValue('Spouse_DOB', isoDate(record.spouse?.Spouse_DOB));
 
     childrenList.innerHTML = '';
