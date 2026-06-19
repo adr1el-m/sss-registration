@@ -25,7 +25,81 @@ const pool = mysql.createPool({
 let appTablesReady = null;
 function ensureAppTables() {
     if (!appTablesReady) {
-        appTablesReady = pool.query(`
+        appTablesReady = (async () => {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS Registrant_Table (
+                    SS_Number varchar(15) NOT NULL,
+                    Registrant_Name varchar(100) NOT NULL,
+                    Date_of_Birth date NOT NULL,
+                    Sex char(1) NOT NULL,
+                    Civil_Status varchar(2) NOT NULL,
+                    TIN varchar(20) DEFAULT NULL,
+                    Nationality varchar(50) DEFAULT NULL,
+                    Religion varchar(50) DEFAULT NULL,
+                    POB varchar(100) DEFAULT NULL,
+                    Home_Address text NOT NULL,
+                    Mobile_Number varchar(15) DEFAULT NULL,
+                    Email_Address varchar(100) DEFAULT NULL,
+                    Telephone_Number varchar(15) DEFAULT NULL,
+                    Father_Name varchar(100) DEFAULT NULL,
+                    Mother_Maiden_Name varchar(100) NOT NULL,
+                    Employment_Type enum('SE','OFW','NWS') NOT NULL,
+                    PRIMARY KEY (SS_Number)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS Spouse_Table (
+                    SS_Number varchar(15) NOT NULL,
+                    Spouse_SSN varchar(15) NOT NULL,
+                    Spouse_Name varchar(100) NOT NULL,
+                    Spouse_DOB date DEFAULT NULL,
+                    PRIMARY KEY (SS_Number),
+                    UNIQUE KEY Spouse_SSN (Spouse_SSN),
+                    CONSTRAINT fk_spouse_ssn FOREIGN KEY (SS_Number) REFERENCES Registrant_Table (SS_Number) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS Beneficiaries_Table (
+                    Ben_ID varchar(10) NOT NULL,
+                    SS_Number varchar(15) NOT NULL,
+                    Ben_Name varchar(100) NOT NULL,
+                    Ben_DOB date DEFAULT NULL,
+                    Ben_Relationship varchar(20) DEFAULT NULL,
+                    PRIMARY KEY (Ben_ID),
+                    KEY fk_beneficiaries_ssn (SS_Number),
+                    CONSTRAINT fk_beneficiaries_ssn FOREIGN KEY (SS_Number) REFERENCES Registrant_Table (SS_Number) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS Self_Employed_Table (
+                    SS_Number varchar(15) NOT NULL,
+                    SE_Profession varchar(100) NOT NULL,
+                    SE_Year_Started int NOT NULL,
+                    SE_Monthly_Earnings decimal(10,2) NOT NULL,
+                    PRIMARY KEY (SS_Number),
+                    CONSTRAINT fk_se_ssn FOREIGN KEY (SS_Number) REFERENCES Registrant_Table (SS_Number) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS OFW_Table (
+                    SS_Number varchar(15) NOT NULL,
+                    OFW_Foreign_Address text NOT NULL,
+                    OFW_Monthly_Earnings decimal(10,2) NOT NULL,
+                    OFW_FlexiFund_Flag char(1) NOT NULL,
+                    PRIMARY KEY (SS_Number),
+                    CONSTRAINT fk_ofw_ssn FOREIGN KEY (SS_Number) REFERENCES Registrant_Table (SS_Number) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS Non_Working_Spouse (
+                    SS_Number varchar(15) NOT NULL,
+                    WS_SSN varchar(15) NOT NULL,
+                    WS_Income decimal(10,2) NOT NULL,
+                    PRIMARY KEY (SS_Number),
+                    CONSTRAINT fk_nws_ssn FOREIGN KEY (SS_Number) REFERENCES Registrant_Table (SS_Number) ON DELETE CASCADE ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            await pool.query(`
             CREATE TABLE IF NOT EXISTS Record_Status (
                 SS_Number varchar(15) NOT NULL,
                 Is_Archived tinyint(1) NOT NULL DEFAULT 0,
@@ -34,7 +108,21 @@ function ensureAppTables() {
                 Archived_At timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (SS_Number)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `);
+            `);
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS Activity_Logs (
+                    Log_ID int NOT NULL AUTO_INCREMENT,
+                    Action varchar(40) NOT NULL,
+                    SS_Number varchar(15) NULL,
+                    Record_Name varchar(180) NULL,
+                    Details text NULL,
+                    Created_At timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (Log_ID),
+                    INDEX idx_activity_created (Created_At),
+                    INDEX idx_activity_ss (SS_Number)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+        })();
     }
     return appTablesReady;
 }
@@ -68,6 +156,15 @@ async function nextBeneficiaryId(conn) {
     );
     const next = Number(rows[0]?.maxId || 0) + 1;
     return `B${String(next).padStart(5, '0')}`;
+}
+
+async function logActivity(action, ssNumber = null, recordName = null, details = null) {
+    await ensureAppTables();
+    await pool.query(
+        `INSERT INTO Activity_Logs (Action, SS_Number, Record_Name, Details)
+         VALUES (?, ?, ?, ?)`,
+        [action, ssNumber, recordName, details ? JSON.stringify(details) : null]
+    );
 }
 
 async function getE1Record(ssNumber) {
@@ -300,6 +397,21 @@ async function saveE1Record(payload, existingSsNumber = null) {
 }
 
 // ─── E-1 PERSONAL RECORD DOCUMENT CRUD ────────────────────────
+app.get('/api/activity-logs', async (req, res) => {
+    try {
+        await ensureAppTables();
+        const [rows] = await pool.query(
+            `SELECT Log_ID, Action, SS_Number, Record_Name, Details, Created_At
+             FROM Activity_Logs
+             ORDER BY Created_At DESC, Log_ID DESC
+             LIMIT 120`
+        );
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/e1-records', async (req, res) => {
     try {
         await ensureAppTables();
@@ -327,8 +439,15 @@ app.get('/api/e1-records', async (req, res) => {
         const where = [];
         const params = [];
         if (search) {
-            where.push('(r.SS_Number LIKE ? OR r.Registrant_Name LIKE ? OR r.Email_Address LIKE ? OR r.Mobile_Number LIKE ?)');
-            params.push(search, search, search, search);
+            where.push(`(
+                r.SS_Number LIKE ?
+                OR r.Registrant_Name LIKE ?
+                OR r.Email_Address LIKE ?
+                OR r.Mobile_Number LIKE ?
+                OR r.Telephone_Number LIKE ?
+                OR r.Home_Address LIKE ?
+            )`);
+            params.push(search, search, search, search, search, search);
         }
         if (['SE', 'OFW', 'NWS'].includes(employment)) {
             where.push('r.Employment_Type = ?');
@@ -448,6 +567,9 @@ app.get('/api/e1-records/:id', async (req, res) => {
 app.post('/api/e1-records', async (req, res) => {
     try {
         const id = await saveE1Record(req.body);
+        await logActivity('create', id, req.body?.registrant?.Registrant_Name || req.body?.Registrant_Name, {
+            employmentType: req.body?.registrant?.Employment_Type || req.body?.Employment_Type
+        });
         res.status(201).json({ message: 'E-1 record created.', id });
     } catch (err) {
         res.status(err.status || 500).json({ error: err.message });
@@ -459,6 +581,9 @@ app.put('/api/e1-records/:id', async (req, res) => {
         const record = await getE1Record(req.params.id);
         if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
         const id = await saveE1Record(req.body, req.params.id);
+        await logActivity('update', id, req.body?.registrant?.Registrant_Name || record.registrant?.Registrant_Name, {
+            employmentType: req.body?.registrant?.Employment_Type || record.registrant?.Employment_Type
+        });
         res.json({ message: 'E-1 record updated.', id });
     } catch (err) {
         res.status(err.status || 500).json({ error: err.message });
@@ -468,7 +593,7 @@ app.put('/api/e1-records/:id', async (req, res) => {
 app.delete('/api/e1-records/:id', async (req, res) => {
     try {
         await ensureAppTables();
-        const [[record]] = await pool.query('SELECT SS_Number FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
+        const [[record]] = await pool.query('SELECT SS_Number, Registrant_Name FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
         if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
         await pool.query(
             `INSERT INTO Record_Status (SS_Number, Is_Archived, Created_At, Updated_At, Archived_At)
@@ -479,6 +604,7 @@ app.delete('/api/e1-records/:id', async (req, res) => {
                 Archived_At = NOW()`,
             [req.params.id]
         );
+        await logActivity('archive', req.params.id, record.Registrant_Name);
         res.json({ message: 'E-1 record archived.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -488,7 +614,7 @@ app.delete('/api/e1-records/:id', async (req, res) => {
 app.patch('/api/e1-records/:id/restore', async (req, res) => {
     try {
         await ensureAppTables();
-        const [[record]] = await pool.query('SELECT SS_Number FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
+        const [[record]] = await pool.query('SELECT SS_Number, Registrant_Name FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
         if (!record) return res.status(404).json({ error: 'E-1 record not found.' });
         await pool.query(
             `INSERT INTO Record_Status (SS_Number, Is_Archived, Created_At, Updated_At, Archived_At)
@@ -499,6 +625,7 @@ app.patch('/api/e1-records/:id/restore', async (req, res) => {
                 Archived_At = NULL`,
             [req.params.id]
         );
+        await logActivity('restore', req.params.id, record.Registrant_Name);
         res.json({ message: 'E-1 record restored.' });
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -20,6 +20,7 @@
             <button type="button" class="btn btn-secondary" id="random-fill">Fill Random</button>
             <button type="button" class="btn btn-secondary" id="print-form">Print/PDF</button>
             <button type="button" class="btn btn-secondary" id="archive-page">Archive Page</button>
+            <button type="button" class="btn btn-secondary" id="activity-page">Activity Logs</button>
             <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
                 <span class="theme-toggle-icon" aria-hidden="true">DM</span>
                 <span id="theme-toggle-label">Dark Mode</span>
@@ -76,13 +77,20 @@
                     </div>
                     <ul id="quality-list"></ul>
                 </div>
+                <div class="wizard-shell" aria-label="Mobile form steps">
+                    <div class="wizard-steps" id="wizard-steps">
+                        <button type="button" class="wizard-step is-active" data-step="0">Personal</button>
+                        <button type="button" class="wizard-step" data-step="1">Beneficiaries</button>
+                        <button type="button" class="wizard-step" data-step="2">Work</button>
+                    </div>
+                </div>
 
-                <section class="form-section">
+                <section class="form-section" data-wizard-panel="0">
                     <h2>A. Personal Data</h2>
                     <div class="form-grid">
                         <label>
                             <span>SS Number</span>
-                            <input id="SS_Number" name="SS_Number" required maxlength="15" pattern="[0-9]{2}-[0-9]{7}-[0-9]" title="Use the format 00-0000000-0" placeholder="01-2345678-9">
+                            <input id="SS_Number" name="SS_Number" required readonly maxlength="15" pattern="[0-9]{2}-[0-9]{7}-[0-9]" title="Generated automatically" placeholder="Generated automatically">
                         </label>
                         <label class="span-3">
                             <span>Full Name</span>
@@ -91,6 +99,10 @@
                         <label>
                             <span>Date of Birth</span>
                             <input id="Date_of_Birth" name="Date_of_Birth" required type="date">
+                        </label>
+                        <label>
+                            <span>Age</span>
+                            <input id="Registrant_Age" readonly placeholder="Auto">
                         </label>
                         <label>
                             <span>Sex</span>
@@ -154,7 +166,7 @@
                     </div>
                 </section>
 
-                <section class="form-section">
+                <section class="form-section" data-wizard-panel="1">
                     <div class="section-heading-row">
                         <h2>B. Dependent(s)/Beneficiary/ies</h2>
                         <label class="inline-check">
@@ -186,7 +198,7 @@
                     <div id="other-beneficiaries-list" class="repeat-list"></div>
                 </section>
 
-                <section class="form-section">
+                <section class="form-section" data-wizard-panel="2">
                     <h2>C. Self-Employed / Overseas Filipino Worker / Non-Working Spouse</h2>
                     <div class="employment-tabs" role="radiogroup" aria-label="Employment type">
                         <label><input type="radio" name="Employment_Type" value="SE" checked> Self-Employed</label>
@@ -243,6 +255,8 @@
                 </section>
 
                 <div class="form-actions">
+                    <button type="button" class="btn btn-secondary wizard-nav" id="wizard-prev">Previous</button>
+                    <button type="button" class="btn btn-secondary wizard-nav" id="wizard-next">Next</button>
                     <button type="button" class="btn btn-secondary" id="reset-form">Clear</button>
                     <button type="submit" class="btn btn-primary" id="save-record">Save E-1 Record</button>
                 </div>
@@ -289,7 +303,7 @@
                 </select>
                 <button type="button" class="btn btn-secondary" id="clear-record-filters">Clear Filters</button>
             </div>
-            <input id="record-search" class="search-input" placeholder="Search SS number, name, or email">
+            <input id="record-search" class="search-input" placeholder="Search name, SS number, phone, email, or address">
             <div id="record-list" class="record-list"></div>
             <p id="empty-records" class="empty-state hidden">No E-1 records found.</p>
         </aside>
@@ -332,6 +346,19 @@
 </div>
 
 <section class="official-print hidden" id="official-print" aria-hidden="true"></section>
+
+<div class="modal-backdrop hidden" id="activity-modal" role="dialog" aria-modal="true" aria-labelledby="activity-title">
+    <div class="review-dialog detail-dialog">
+        <div class="review-header">
+            <div>
+                <p class="kicker">Audit trail</p>
+                <h2 id="activity-title">Activity Logs</h2>
+            </div>
+            <button type="button" class="icon-only" id="activity-close" aria-label="Close activity logs">X</button>
+        </div>
+        <div class="activity-list" id="activity-list"></div>
+    </div>
+</div>
 <script src="script.js"></script>
 </body>
 </html>

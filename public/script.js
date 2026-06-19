@@ -19,13 +19,21 @@ const reviewModal = document.getElementById('review-modal');
 const reviewContent = document.getElementById('review-content');
 const reviewConfirm = document.getElementById('review-confirm');
 const archivePage = document.getElementById('archive-page');
+const activityPage = document.getElementById('activity-page');
+const activityModal = document.getElementById('activity-modal');
+const activityList = document.getElementById('activity-list');
 const detailModal = document.getElementById('detail-modal');
 const detailContent = document.getElementById('detail-content');
 const officialPrint = document.getElementById('official-print');
+const wizardSteps = document.getElementById('wizard-steps');
+const wizardPrev = document.getElementById('wizard-prev');
+const wizardNext = document.getElementById('wizard-next');
 
 let editingId = null;
 let pendingSave = null;
 let currentPreviewRecord = null;
+let currentWizardStep = 0;
+const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
 
 const firstNames = ['Miguel', 'Maria', 'Juan', 'Teresa', 'Paolo', 'Isabella', 'Rafael', 'Carmen', 'Luisa', 'Antonio', 'Elena', 'Jose'];
 const lastNames = ['Santos', 'Reyes', 'Dela Cruz', 'Garcia', 'Torres', 'Navarro', 'Bautista', 'Mendoza', 'Flores', 'Ramos', 'Castillo', 'Gonzales'];
@@ -295,7 +303,7 @@ function buildPayload() {
 }
 
 async function requestJson(url, options = {}) {
-    const response = await fetch(url, options);
+    const response = await fetch(`${API_BASE}${url}`, options);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
         throw new Error(data.error || 'Request failed.');
@@ -334,6 +342,35 @@ function isFutureDate(dateString) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return new Date(dateString) > today;
+}
+
+function calculateAge(dateString) {
+    if (!dateString || isFutureDate(dateString)) return '';
+    const birthDate = new Date(dateString);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDelta = today.getMonth() - birthDate.getMonth();
+    if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birthDate.getDate())) {
+        age -= 1;
+    }
+    return age >= 0 ? String(age) : '';
+}
+
+function updateRegistrantAge() {
+    setValue('Registrant_Age', calculateAge(value('Date_of_Birth')));
+}
+
+function setWizardStep(step) {
+    const panels = [...document.querySelectorAll('[data-wizard-panel]')];
+    currentWizardStep = Math.max(0, Math.min(step, panels.length - 1));
+    panels.forEach((panel, index) => {
+        panel.classList.toggle('wizard-panel-active', index === currentWizardStep);
+    });
+    document.querySelectorAll('.wizard-step').forEach((button, index) => {
+        button.classList.toggle('is-active', index === currentWizardStep);
+    });
+    if (wizardPrev) wizardPrev.disabled = currentWizardStep === 0;
+    if (wizardNext) wizardNext.disabled = currentWizardStep === panels.length - 1;
 }
 
 function validatePayload(payload) {
@@ -631,7 +668,8 @@ async function refreshRecords() {
 function resetForm() {
     editingId = null;
     form.reset();
-    document.getElementById('SS_Number').disabled = false;
+    document.getElementById('SS_Number').readOnly = true;
+    setValue('SS_Number', randomSsNumber());
     document.getElementById('form-mode').textContent = 'New record';
     document.getElementById('save-record').textContent = 'Save E-1 Record';
     childrenList.innerHTML = '';
@@ -639,6 +677,8 @@ function resetForm() {
     ensureInitialRows();
     updateEmploymentPanels();
     updateQualityPanel();
+    updateRegistrantAge();
+    setWizardStep(0);
     clearValidation();
     showStatus('');
 }
@@ -698,6 +738,7 @@ function fillRandomInfo() {
 
     updateEmploymentPanels();
     updateQualityPanel();
+    updateRegistrantAge();
     clearValidation();
     showStatus('Random sample data filled in. Review it, then save when ready.', 'success');
 }
@@ -782,6 +823,7 @@ function renderRecordPreview(record) {
             <h3>Personal Data</h3>
             <dl>
                 ${detailRow('Date of Birth', formatDate(r.Date_of_Birth))}
+                ${detailRow('Age', calculateAge(isoDate(r.Date_of_Birth)))}
                 ${detailRow('Sex', formatSex(r.Sex))}
                 ${detailRow('Civil Status', formatCivilStatus(r.Civil_Status))}
                 ${detailRow('TIN', r.TIN)}
@@ -830,6 +872,42 @@ function renderRecordPreview(record) {
     `;
 }
 
+function activityDetails(inputValue) {
+    if (!inputValue) return '';
+    try {
+        const parsed = typeof inputValue === 'string' ? JSON.parse(inputValue) : inputValue;
+        return Object.entries(parsed || {})
+            .map(([key, fieldValue]) => `${key}: ${fieldValue}`)
+            .join(' · ');
+    } catch (error) {
+        return String(inputValue);
+    }
+}
+
+async function openActivityLogs() {
+    activityList.innerHTML = '<p class="muted-note">Loading activity logs...</p>';
+    activityModal.classList.remove('hidden');
+    try {
+        const logs = await requestJson('/api/activity-logs');
+        activityList.innerHTML = logs.length ? logs.map(log => `
+            <article class="activity-item">
+                <div>
+                    <strong>${escapeHtml(log.Action || '-')}</strong>
+                    <span>${escapeHtml(formatDateTime(log.Created_At))}</span>
+                </div>
+                <p>${escapeHtml(log.Record_Name || log.SS_Number || 'System')}</p>
+                <small>${escapeHtml(activityDetails(log.Details))}</small>
+            </article>
+        `).join('') : '<p class="muted-note">No activity has been recorded yet.</p>';
+    } catch (error) {
+        activityList.innerHTML = `<p class="muted-note">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+function closeActivityLogs() {
+    activityModal.classList.add('hidden');
+}
+
 async function openRecordPreview(ssNumber) {
     currentPreviewRecord = await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}`);
     renderRecordPreview(currentPreviewRecord);
@@ -845,10 +923,38 @@ function officialDate(inputValue) {
     const date = isoDate(inputValue);
     if (!date) return '';
     const [year, month, day] = date.split('-');
-    return `${month}/${day}/${year}`;
+    return `${month}${day}${year}`;
 }
 
-function officialCell(label, fieldValue, className = '') {
+function splitPersonName(inputValue) {
+    const raw = String(inputValue || '').trim();
+    if (!raw) return { last: '', first: '', middle: '', suffix: '' };
+    const [lastPart, restPart = ''] = raw.split(',').map(part => part.trim());
+    const parts = restPart.split(/\s+/).filter(Boolean);
+    return {
+        last: lastPart || raw,
+        first: parts[0] || '',
+        middle: parts.slice(1).join(' '),
+        suffix: ''
+    };
+}
+
+function officialDigits(inputValue, total, dividers = []) {
+    const digits = digitsOnly(inputValue).slice(0, total).padEnd(total, ' ');
+    return `
+        <span class="official-digits digits-${total}">
+            ${Array.from({ length: total }, (_, index) => `
+                <i class="${dividers.includes(index + 1) ? 'has-divider' : ''}">${escapeHtml(digits[index].trim())}</i>
+            `).join('')}
+        </span>
+    `;
+}
+
+function officialCheckbox(label, checked) {
+    return `<span class="official-check"><b>${checked ? 'X' : ''}</b>${escapeHtml(label)}</span>`;
+}
+
+function officialCell(label, fieldValue = '', className = '') {
     return `
         <div class="official-cell ${className}">
             <span>${escapeHtml(label)}</span>
@@ -857,19 +963,53 @@ function officialCell(label, fieldValue, className = '') {
     `;
 }
 
-function officialCheckbox(label, checked) {
-    return `<span class="official-check"><b>${checked ? 'X' : ''}</b>${escapeHtml(label)}</span>`;
+function officialNameCell(label, inputValue, className = '') {
+    const name = splitPersonName(inputValue);
+    return `
+        <div class="official-cell official-name ${className}">
+            <span>${escapeHtml(label)}</span>
+            <div>
+                <strong>${escapeHtml(name.last)}</strong>
+                <strong>${escapeHtml(name.first)}</strong>
+                <strong>${escapeHtml(name.middle)}</strong>
+                <strong>${escapeHtml(name.suffix)}</strong>
+            </div>
+            <small><b>(LAST NAME)</b><b>(FIRST NAME)</b><b>(MIDDLE NAME)</b><b>(SUFFIX)</b></small>
+        </div>
+    `;
 }
 
-function officialBeneficiaryRows(people, count, labelPrefix) {
+function officialDateCell(label, inputValue, className = '') {
+    return `
+        <div class="official-cell official-date-cell ${className}">
+            <span>${escapeHtml(label)}</span>
+            ${officialDigits(officialDate(inputValue), 8, [2, 4])}
+        </div>
+    `;
+}
+
+function officialLine(label, fieldValue = '') {
+    return `
+        <div class="official-line">
+            <strong>${escapeHtml(fieldValue || '')}</strong>
+            <span>${escapeHtml(label)}</span>
+        </div>
+    `;
+}
+
+function officialBeneficiaryRows(people, count, includeRelationship = false) {
     return Array.from({ length: count }, (_, index) => {
         const person = people[index] || {};
+        const name = splitPersonName(person.Ben_Name);
         return `
-            <div class="official-beneficiary-row">
-                <span>${labelPrefix ? `${labelPrefix} ${index + 1}.` : `${index + 1}.`}</span>
-                <strong>${escapeHtml(person.Ben_Name || '')}</strong>
-                <em>${escapeHtml(person.Ben_Relationship || (labelPrefix ? 'Child' : ''))}</em>
-                <small>${escapeHtml(officialDate(person.Ben_DOB))}</small>
+            <div class="official-beneficiary-row ${includeRelationship ? 'with-relationship' : ''}">
+                <span>${index + 1}.</span>
+                <strong>${escapeHtml(name.last)}</strong>
+                <strong>${escapeHtml(name.first)}</strong>
+                <strong>${escapeHtml(name.middle)}</strong>
+                <strong>${escapeHtml(name.suffix)}</strong>
+                ${includeRelationship ? `<em>${escapeHtml(person.Ben_Relationship || '')}</em>` : ''}
+                <small>${officialDigits(officialDate(person.Ben_DOB), 8, [2, 4])}</small>
             </div>
         `;
     }).join('');
@@ -881,11 +1021,19 @@ function renderOfficialE1(record) {
     const se = details.selfEmployed || {};
     const ofw = details.ofw || {};
     const nws = details.nonWorkingSpouse || {};
+    const employmentType = r.Employment_Type || 'SE';
+    const civil = r.Civil_Status;
     return `
         <div class="official-sheet">
             <header class="official-header">
-                <div class="official-logo">E-1</div>
-                <div>
+                <div class="official-brand">
+                    <div class="official-logo"><span></span><span></span><span></span></div>
+                    <div>
+                        <strong>E-1</strong>
+                        <small>COV-01214 (09-2015)</small>
+                    </div>
+                </div>
+                <div class="official-title">
                     <p>Republic of the Philippines</p>
                     <h1>Social Security System</h1>
                     <h2>Personal Record</h2>
@@ -893,18 +1041,34 @@ function renderOfficialE1(record) {
                 </div>
                 <div class="official-ss">
                     <span>SS Number</span>
-                    <strong>${escapeHtml(r.SS_Number || '')}</strong>
+                    ${officialDigits(r.SS_Number, 10, [2, 9])}
                 </div>
             </header>
-            <p class="official-note">System-generated E-1 preview. D. Certification and Part II intentionally omitted.</p>
+            <p class="official-repro">THIS FORM MAY BE REPRODUCED AND IS NOT FOR SALE. THIS CAN ALSO BE DOWNLOADED THRU THE SSS WEBSITE AT www.sss.gov.ph.</p>
+            <p class="official-instruction">PLEASE READ THE INSTRUCTIONS AND REMINDERS AT THE BACK BEFORE FILLING OUT THIS FORM. PRINT ALL INFORMATION IN CAPITAL LETTERS AND <b>USE BLACK INK ONLY.</b></p>
             <h3>Part I - To Be Filled Out By The Registrant</h3>
             <h4>A. Personal Data</h4>
             <div class="official-grid">
-                ${officialCell('Name', r.Registrant_Name, 'wide-3')}
-                ${officialCell('Date of Birth (MM/DD/YYYY)', officialDate(r.Date_of_Birth))}
-                ${officialCell('Sex', `${r.Sex === 'M' ? 'Male' : ''}${r.Sex === 'F' ? 'Female' : ''}`)}
-                ${officialCell('Civil Status', formatCivilStatus(r.Civil_Status), 'wide-2')}
-                ${officialCell('Tax Identification Number', r.TIN)}
+                ${officialNameCell('Name', r.Registrant_Name, 'wide-3')}
+                ${officialDateCell('Date of Birth (MMDDYYYY)', r.Date_of_Birth)}
+                <div class="official-cell official-options">
+                    <span>Sex</span>
+                    <div>${officialCheckbox('Male', r.Sex === 'M')}${officialCheckbox('Female', r.Sex === 'F')}</div>
+                </div>
+                <div class="official-cell official-options wide-2">
+                    <span>Civil Status</span>
+                    <div>
+                        ${officialCheckbox('Single', civil === 'S')}
+                        ${officialCheckbox('Married', civil === 'M')}
+                        ${officialCheckbox('Widowed', civil === 'W')}
+                        ${officialCheckbox('Legally Separated', civil === 'LS')}
+                        ${officialCheckbox('Others', civil === 'O')}
+                    </div>
+                </div>
+                <div class="official-cell official-date-cell">
+                    <span>Tax Identification Number (if any)</span>
+                    ${officialDigits(r.TIN, 12, [3, 6, 9])}
+                </div>
                 ${officialCell('Nationality', r.Nationality)}
                 ${officialCell('Religion', r.Religion)}
                 ${officialCell('Place of Birth', r.POB, 'wide-2')}
@@ -912,39 +1076,67 @@ function renderOfficialE1(record) {
                 ${officialCell('Mobile/Cellphone Number', r.Mobile_Number)}
                 ${officialCell('Email Address', r.Email_Address, 'wide-2')}
                 ${officialCell('Telephone Number', r.Telephone_Number)}
-                ${officialCell('Father', r.Father_Name, 'wide-2')}
-                ${officialCell("Mother's Maiden Name", r.Mother_Maiden_Name, 'wide-2')}
+                ${officialNameCell('Father', r.Father_Name, 'wide-4')}
+                ${officialNameCell("Mother's Maiden Name", r.Mother_Maiden_Name, 'wide-4')}
             </div>
-            <h4>B. Dependent(s) / Beneficiary/ies</h4>
+            <h4 class="official-h4-with-check"><span>B. Dependent(s)/Beneficiary/ies</span>${officialCheckbox('Check this box if using additional sheet.', document.getElementById('additional-sheet')?.checked)}</h4>
             <div class="official-grid">
-                ${officialCell('Spouse', record.spouse?.Spouse_Name, 'wide-3')}
-                ${officialCell('Date of Birth', officialDate(record.spouse?.Spouse_DOB))}
+                ${officialNameCell('Spouse', record.spouse?.Spouse_Name, 'wide-3')}
+                ${officialDateCell('Date of Birth (MMDDYYYY)', record.spouse?.Spouse_DOB)}
             </div>
-            ${officialBeneficiaryRows(record.children || [], 5, 'Child')}
-            <div class="official-beneficiary-title">Other Beneficiary/ies</div>
-            ${officialBeneficiaryRows(record.otherBeneficiaries || [], 2, '')}
+            <div class="official-beneficiary-head child-head"><span>Child/ren</span><b>(LAST NAME)</b><b>(FIRST NAME)</b><b>(MIDDLE NAME)</b><b>(SUFFIX)</b><b>DATE OF BIRTH (MMDDYYYY)</b></div>
+            ${officialBeneficiaryRows(record.children || [], 5)}
+            <div class="official-beneficiary-head other-head"><span>Other Beneficiary/ies <i>(If without spouse and child and parents are both deceased)</i></span><b>(LAST NAME)</b><b>(FIRST NAME)</b><b>(MIDDLE NAME)</b><b>(SUFFIX)</b><b>RELATIONSHIP</b><b>DATE OF BIRTH (MMDDYYYY)</b></div>
+            ${officialBeneficiaryRows(record.otherBeneficiaries || [], 2, true)}
             <h4>C. For Self-Employed / Overseas Filipino Worker / Non-Working Spouse</h4>
             <div class="official-three">
                 <section>
-                    <strong>Self-Employed</strong>
-                    <p>Profession/Business: ${escapeHtml(se.SE_Profession || '')}</p>
-                    <p>Year Started: ${escapeHtml(se.SE_Year_Started || '')}</p>
-                    <p>Monthly Earnings: ${se.SE_Monthly_Earnings ? `PHP ${escapeHtml(moneyOrBlank(se.SE_Monthly_Earnings))}` : ''}</p>
-                    ${officialCheckbox('Selected', r.Employment_Type === 'SE')}
+                    <strong>Self-Employed (SE)</strong>
+                    ${officialLine('Profession/Business', employmentType === 'SE' ? se.SE_Profession : '')}
+                    ${officialLine('Year Prof./Business Started', employmentType === 'SE' ? se.SE_Year_Started : '')}
+                    ${officialLine('Monthly Earnings', employmentType === 'SE' && se.SE_Monthly_Earnings ? `P ${moneyOrBlank(se.SE_Monthly_Earnings)}` : '')}
                 </section>
                 <section>
-                    <strong>Overseas Filipino Worker</strong>
-                    <p>Foreign Address: ${escapeHtml(ofw.OFW_Foreign_Address || '')}</p>
-                    <p>Monthly Earnings: ${ofw.OFW_Monthly_Earnings ? `PHP ${escapeHtml(moneyOrBlank(ofw.OFW_Monthly_Earnings))}` : ''}</p>
-                    <p>Flexi-Fund: ${ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1 ? 'Yes' : 'No'}</p>
-                    ${officialCheckbox('Selected', r.Employment_Type === 'OFW')}
+                    <strong>Overseas Filipino Worker (OFW)</strong>
+                    ${officialLine('Foreign Address', employmentType === 'OFW' ? ofw.OFW_Foreign_Address : '')}
+                    ${officialLine('Monthly Earnings', employmentType === 'OFW' && ofw.OFW_Monthly_Earnings ? `P ${moneyOrBlank(ofw.OFW_Monthly_Earnings)}` : '')}
+                    <div class="official-flexi">
+                        <span>Are you applying for membership in the Flexi-Fund Program?</span>
+                        ${officialCheckbox('YES', employmentType === 'OFW' && (ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1))}
+                        ${officialCheckbox('NO', employmentType === 'OFW' && !(ofw.OFW_FlexiFund_Flag === 'Y' || ofw.OFW_FlexiFund_Flag === 1))}
+                    </div>
                 </section>
                 <section>
-                    <strong>Non-Working Spouse</strong>
-                    <p>Working Spouse SS/CRN: ${escapeHtml(nws.WS_SSN || '')}</p>
-                    <p>Working Spouse Income: ${nws.WS_Income ? `PHP ${escapeHtml(moneyOrBlank(nws.WS_Income))}` : ''}</p>
-                    ${officialCheckbox('Selected', r.Employment_Type === 'NWS')}
+                    <strong>Non-Working Spouse (NWS)</strong>
+                    ${officialLine('SS No./Common Reference No. of Working Spouse', employmentType === 'NWS' ? nws.WS_SSN : '')}
+                    ${officialLine('Monthly Income of Working Spouse (P)', employmentType === 'NWS' && nws.WS_Income ? moneyOrBlank(nws.WS_Income) : '')}
+                    <p class="official-consent">I agree with my spouse's membership with SSS.</p>
+                    ${officialLine('SIGNATURE OVER PRINTED NAME OF WORKING SPOUSE')}
                 </section>
+            </div>
+            <h4>D. Certification</h4>
+            <div class="official-certification">
+                <section>
+                    <p>I certify that the information provided in this form are true and correct.</p>
+                    <em>(If registrant cannot sign, affix fingerprints in the presence of an SSS personnel.)</em>
+                    <div class="official-sign-lines">${officialLine('PRINTED NAME')}${officialLine('SIGNATURE')}${officialLine('DATE')}</div>
+                </section>
+                <section>
+                    <strong>Registrant is required to affix fingerprints.</strong>
+                    <div class="official-fingerprints"><div><span>RIGHT THUMB</span></div><div><span>RIGHT INDEX</span></div></div>
+                </section>
+            </div>
+            <h3>Part II - To Be Filled Out By SSS</h3>
+            <div class="official-sss-grid">
+                ${officialCell('Business Code (for SE)')}
+                ${officialCell("Working Spouse's MSC (for NWS)", 'P')}
+                ${officialCell('Received By (Representative Office/Partner Agent)', '', 'wide-2')}
+                ${officialCell('Received & Processed By (MSS, Branch/Service Office/Foreign Office)', '', 'wide-2')}
+                ${officialCell('Monthly SS Contribution (for SE/OFW/NWS)', 'P')}
+                ${officialCell('Approved MSC (for SE/OFW/NWS)', 'P')}
+                ${officialCell('Reviewed By (MSS, Branch/Service Office)', '', 'wide-4')}
+                ${officialCell('Start of Payment (for SE/NWS)')}
+                <div class="official-cell official-options"><span>Flexi-Fund Application (for OFW)</span><div>${officialCheckbox('Approved', false)}${officialCheckbox('Disapproved', false)}</div></div>
             </div>
         </div>
     `;
@@ -1002,11 +1194,13 @@ async function editRecord(ssNumber) {
     setValue('WS_SSN', nws.WS_SSN);
     setValue('WS_Income', nws.WS_Income);
 
-    document.getElementById('SS_Number').disabled = true;
+    document.getElementById('SS_Number').readOnly = true;
     document.getElementById('form-mode').textContent = `Editing ${r.SS_Number}`;
     document.getElementById('save-record').textContent = 'Update E-1 Record';
     updateEmploymentPanels();
     updateQualityPanel();
+    updateRegistrantAge();
+    setWizardStep(0);
     clearValidation();
     showStatus('Loaded record for editing.', 'success');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1096,8 +1290,12 @@ form.addEventListener('submit', async event => {
 
     try {
         if (!editingId && await checkDuplicateSsNumber(payload.registrant.SS_Number)) {
-            showValidationErrors([{ id: 'SS_Number', message: 'This SS Number already exists. Search for it and use Edit instead.' }]);
-            return;
+            payload.registrant.SS_Number = randomSsNumber();
+            setValue('SS_Number', payload.registrant.SS_Number);
+            if (await checkDuplicateSsNumber(payload.registrant.SS_Number)) {
+                showValidationErrors([{ id: 'SS_Number', message: 'Generated SS Number already exists. Click Clear Form to generate a new one.' }]);
+                return;
+            }
         }
         clearValidation();
         pendingSave = {
@@ -1128,9 +1326,18 @@ document.getElementById('reset-form').addEventListener('click', resetForm);
 document.getElementById('random-fill').addEventListener('click', fillRandomInfo);
 document.getElementById('print-form').addEventListener('click', printForm);
 archivePage.addEventListener('click', openArchivePage);
+activityPage.addEventListener('click', openActivityLogs);
 themeToggle.addEventListener('click', () => {
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
+document.getElementById('Date_of_Birth').addEventListener('change', updateRegistrantAge);
+document.getElementById('Date_of_Birth').addEventListener('input', updateRegistrantAge);
+wizardSteps?.addEventListener('click', event => {
+    const button = event.target.closest('[data-step]');
+    if (button) setWizardStep(Number(button.dataset.step));
+});
+wizardPrev?.addEventListener('click', () => setWizardStep(currentWizardStep - 1));
+wizardNext?.addEventListener('click', () => setWizardStep(currentWizardStep + 1));
 document.getElementById('add-child').addEventListener('click', () => {
     childrenList.appendChild(createPersonRow('child'));
     updateQualityPanel();
@@ -1170,6 +1377,7 @@ document.getElementById('detail-edit').addEventListener('click', () => {
 document.getElementById('detail-pdf').addEventListener('click', () => {
     if (currentPreviewRecord) printOfficialRecord(currentPreviewRecord);
 });
+document.getElementById('activity-close').addEventListener('click', closeActivityLogs);
 form.addEventListener('input', updateQualityPanel);
 form.addEventListener('change', updateQualityPanel);
 window.addEventListener('afterprint', () => {
