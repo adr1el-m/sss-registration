@@ -833,7 +833,7 @@ async function loadSummary() {
 function updateRecordsMode() {
     const isArchivePage = recordStatusFilter.value === 'archived';
     document.body.classList.toggle('archive-page-mode', isArchivePage);
-    document.getElementById('records-title').textContent = isArchivePage ? 'Trash Page' : 'Saved Records';
+    document.getElementById('records-title').textContent = isArchivePage ? 'Archive Page' : 'Saved Records';
 }
 
 async function loadRecords(search = '') {
@@ -885,7 +885,7 @@ async function loadRecords(search = '') {
                 ${needsReview ? '<button type="button" class="btn btn-secondary" data-action="issues">Issues</button>' : ''}
                 <button type="button" class="btn btn-secondary" data-action="pdf">PDF</button>
                 ${archived
-                    ? '<button type="button" class="btn btn-secondary" data-action="restore">Restore</button>'
+                    ? '<button type="button" class="btn btn-secondary" data-action="restore">Restore</button><button type="button" class="btn btn-danger" data-action="permanent-delete">Delete Permanently</button>'
                     : '<button type="button" class="btn btn-secondary" data-action="edit">Edit</button><button type="button" class="btn btn-danger" data-action="delete">Archive</button>'}
             </div>
         `;
@@ -895,6 +895,7 @@ async function loadRecords(search = '') {
         item.querySelector('[data-action="edit"]')?.addEventListener('click', () => editRecord(record.SS_Number));
         item.querySelector('[data-action="delete"]')?.addEventListener('click', () => archiveRecord(record.SS_Number));
         item.querySelector('[data-action="restore"]')?.addEventListener('click', () => restoreRecord(record.SS_Number));
+        item.querySelector('[data-action="permanent-delete"]')?.addEventListener('click', () => permanentlyDeleteRecord(record.SS_Number));
         recordList.appendChild(item);
     });
 }
@@ -1503,6 +1504,15 @@ async function restoreRecord(ssNumber) {
     await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}/restore`, { method: 'PATCH' });
     await refreshRecords();
     showStatus('Record restored.', 'success');
+}
+
+async function permanentlyDeleteRecord(ssNumber) {
+    const confirmed = confirm(`Permanently delete archived E-1 record for ${ssNumber}? This cannot be undone.`);
+    if (!confirmed) return;
+    await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}/permanent`, { method: 'DELETE' });
+    if (editingId === ssNumber) resetForm();
+    await refreshRecords();
+    showStatus('Archived record permanently deleted.', 'success');
 }
 
 async function saveConfirmedRecord() {

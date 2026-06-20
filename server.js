@@ -720,6 +720,49 @@ app.patch('/api/e1-records/:id/restore', async (req, res) => {
     }
 });
 
+app.delete('/api/e1-records/:id/permanent', async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await ensureAppTables();
+        await connection.beginTransaction();
+
+        const [[record]] = await connection.query(
+            `SELECT r.SS_Number, r.Registrant_Name, COALESCE(s.Is_Archived, 0) AS Is_Archived
+             FROM Registrant_Table r
+             LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
+             WHERE r.SS_Number = ?`,
+            [req.params.id]
+        );
+
+        if (!record) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'E-1 record not found.' });
+        }
+
+        if (!Number(record.Is_Archived)) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Only archived records can be permanently deleted.' });
+        }
+
+        await connection.query('DELETE FROM Beneficiaries_Table WHERE SS_Number = ?', [req.params.id]);
+        await connection.query('DELETE FROM Spouse_Table WHERE SS_Number = ?', [req.params.id]);
+        await connection.query('DELETE FROM Self_Employed_Table WHERE SS_Number = ?', [req.params.id]);
+        await connection.query('DELETE FROM OFW_Table WHERE SS_Number = ?', [req.params.id]);
+        await connection.query('DELETE FROM Non_Working_Spouse WHERE SS_Number = ?', [req.params.id]);
+        await connection.query('DELETE FROM Record_Status WHERE SS_Number = ?', [req.params.id]);
+        await connection.query('DELETE FROM Registrant_Table WHERE SS_Number = ?', [req.params.id]);
+
+        await connection.commit();
+        await safeLogActivity('permanent_delete', req.params.id, record.Registrant_Name);
+        res.json({ message: 'Archived E-1 record permanently deleted.' });
+    } catch (err) {
+        await connection.rollback();
+        res.status(500).json({ error: err.message });
+    } finally {
+        connection.release();
+    }
+});
+
 // ─── REGISTRANTS ──────────────────────────────────────────────
 app.get('/api/registrants', async (req, res) => {
     try {
