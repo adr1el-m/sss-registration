@@ -229,7 +229,7 @@ const qualityIssueExpression = `
           OR r.Civil_Status NOT IN ('S', 'M', 'W', 'LS', 'O')
           OR NULLIF(TRIM(r.Employment_Type), '') IS NULL
           OR r.Employment_Type NOT IN ('SE', 'OFW', 'NWS')
-          OR COUNT(DISTINCT b.Ben_ID) = 0
+          OR (COUNT(DISTINCT b.Ben_ID) + CASE WHEN NULLIF(TRIM(MAX(sp.Spouse_Name)), '') IS NULL THEN 0 ELSE 1 END) = 0
           OR (r.Civil_Status = 'M' AND NULLIF(TRIM(MAX(sp.Spouse_Name)), '') IS NULL)
           OR (r.Employment_Type = 'SE' AND NULLIF(TRIM(MAX(se.SE_Profession)), '') IS NULL)
           OR (r.Employment_Type = 'OFW' AND NULLIF(TRIM(MAX(ofw.OFW_Foreign_Address)), '') IS NULL)
@@ -261,6 +261,25 @@ async function saveE1RecordOnce(payload, existingSsNumber = null) {
     }
 
     const employmentType = d.Employment_Type || 'SE';
+    const spouse = payload.spouse || {};
+    const details = payload.employmentDetails || {};
+    const requiredError = message => {
+        const err = new Error(message);
+        err.status = 400;
+        return err;
+    };
+    if (civilStatusCode(d.Civil_Status) === 'M' && !spouse.Spouse_Name) {
+        throw requiredError('Spouse name is required when civil status is married.');
+    }
+    if (employmentType === 'SE' && (!details.SE_Profession || !details.SE_Year_Started || !details.SE_Monthly_Earnings)) {
+        throw requiredError('Profession/business, year started, and monthly earnings are required for self-employed records.');
+    }
+    if (employmentType === 'OFW' && (!details.OFW_Foreign_Address || !details.OFW_Monthly_Earnings)) {
+        throw requiredError('Foreign address and monthly earnings are required for OFW records.');
+    }
+    if (employmentType === 'NWS' && (!details.WS_SSN || !details.WS_Income)) {
+        throw requiredError('Working spouse SS/Common Reference No. and monthly income are required for non-working spouse records.');
+    }
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
@@ -325,7 +344,6 @@ async function saveE1RecordOnce(payload, existingSsNumber = null) {
         );
 
         await conn.query('DELETE FROM Spouse_Table WHERE SS_Number = ?', [ssNumber]);
-        const spouse = payload.spouse || {};
         if (spouse.Spouse_Name) {
             await conn.query(
                 `INSERT INTO Spouse_Table (SS_Number, Spouse_SSN, Spouse_Name, Spouse_DOB)
@@ -366,7 +384,6 @@ async function saveE1RecordOnce(payload, existingSsNumber = null) {
         await conn.query('DELETE FROM OFW_Table WHERE SS_Number = ?', [ssNumber]);
         await conn.query('DELETE FROM Non_Working_Spouse WHERE SS_Number = ?', [ssNumber]);
 
-        const details = payload.employmentDetails || {};
         if (employmentType === 'SE') {
             await conn.query(
                 `INSERT INTO Self_Employed_Table (SS_Number, SE_Profession, SE_Year_Started, SE_Monthly_Earnings)
@@ -473,7 +490,7 @@ app.get('/api/e1-records', async (req, res) => {
             SELECT
                 r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.TIN, r.Mobile_Number,
                 r.Email_Address, r.Employment_Type,
-                COUNT(DISTINCT b.Ben_ID) AS Beneficiary_Count,
+                COUNT(DISTINCT b.Ben_ID) + CASE WHEN NULLIF(TRIM(MAX(sp.Spouse_Name)), '') IS NULL THEN 0 ELSE 1 END AS Beneficiary_Count,
                 ${qualityIssueExpression} AS Quality_Issues,
                 COALESCE(s.Is_Archived, 0) AS Is_Archived,
                 s.Created_At, s.Updated_At, s.Archived_At
@@ -567,9 +584,12 @@ app.get('/api/e1-records/summary', async (req, res) => {
             LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
         `);
         const [[beneficiaries]] = await pool.query(`
-            SELECT COUNT(b.Ben_ID) AS totalBeneficiaries
-            FROM Beneficiaries_Table b
-            INNER JOIN Registrant_Table r ON r.SS_Number = b.SS_Number
+            SELECT
+                COUNT(DISTINCT b.Ben_ID)
+                + COUNT(DISTINCT CASE WHEN NULLIF(TRIM(sp.Spouse_Name), '') IS NOT NULL THEN sp.SS_Number END) AS totalBeneficiaries
+            FROM Registrant_Table r
+            LEFT JOIN Beneficiaries_Table b ON b.SS_Number = r.SS_Number
+            LEFT JOIN Spouse_Table sp ON sp.SS_Number = r.SS_Number
             LEFT JOIN Record_Status s ON s.SS_Number = r.SS_Number
             WHERE COALESCE(s.Is_Archived, 0) = 0
         `);

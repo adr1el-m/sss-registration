@@ -291,7 +291,7 @@ function createPersonRow(type, data = {}) {
         <input type="hidden" data-field="Ben_ID" value="${escapeHtml(data.Ben_ID)}">
         <label>
             <span>First Name</span>
-            <input data-field="Ben_First_Name" value="${escapeHtml(nameParts.first)}" placeholder="First name">
+            <input data-field="Ben_First_Name" required value="${escapeHtml(nameParts.first)}" placeholder="First name">
         </label>
         <label>
             <span>Middle Name</span>
@@ -299,7 +299,7 @@ function createPersonRow(type, data = {}) {
         </label>
         <label>
             <span>Last Name</span>
-            <input data-field="Ben_Last_Name" value="${escapeHtml(nameParts.last)}" placeholder="Last name">
+            <input data-field="Ben_Last_Name" required value="${escapeHtml(nameParts.last)}" placeholder="Last name">
         </label>
         <label>
             <span>Date of Birth</span>
@@ -320,15 +320,6 @@ function createPersonRow(type, data = {}) {
     return row;
 }
 
-function ensureInitialRows() {
-    if (!childrenList.children.length) {
-        for (let i = 0; i < 2; i += 1) childrenList.appendChild(createPersonRow('child'));
-    }
-    if (!otherBeneficiariesList.children.length) {
-        otherBeneficiariesList.appendChild(createPersonRow('other'));
-    }
-}
-
 function collectRows(container, type) {
     return [...container.querySelectorAll('.repeat-row')]
         .map(row => {
@@ -337,10 +328,16 @@ function collectRows(container, type) {
                 output[input.dataset.field] = input.value.trim();
             });
             output.Ben_Name = composeName(output.Ben_First_Name, output.Ben_Middle_Name, output.Ben_Last_Name);
+            const hasUserData = Boolean(
+                output.Ben_Name
+                || output.Ben_DOB
+                || (type === 'other' && output.Ben_Relationship)
+            );
+            if (!hasUserData) return null;
             if (type === 'child') output.Ben_Relationship = 'Child';
             return output;
         })
-        .filter(row => row.Ben_Name || row.Ben_DOB || row.Ben_Relationship);
+        .filter(Boolean);
 }
 
 function selectedEmploymentType() {
@@ -350,12 +347,40 @@ function selectedEmploymentType() {
 function updateEmploymentPanels() {
     const active = selectedEmploymentType();
     document.querySelectorAll('[data-employment-panel]').forEach(panel => {
-        panel.classList.toggle('hidden', panel.dataset.employmentPanel !== active);
+        const isActive = panel.dataset.employmentPanel === active;
+        panel.classList.toggle('hidden', !isActive);
+        panel.querySelectorAll('input').forEach(input => {
+            input.disabled = !isActive;
+        });
     });
+    setInputRequired(['SE_Profession', 'SE_Year_Started', 'SE_Monthly_Earnings'], active === 'SE');
+    setInputRequired(['OFW_Foreign_Address', 'OFW_Monthly_Earnings'], active === 'OFW');
+    setInputRequired(['WS_SSN', 'WS_Income'], active === 'NWS');
+}
+
+function setInputRequired(ids, required) {
+    ids.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.required = required;
+    });
+}
+
+function updateSpouseSection({ clearWhenHidden = true } = {}) {
+    const isMarried = value('Civil_Status') === 'M';
+    const spouseSection = document.getElementById('spouse-section');
+    if (!spouseSection) return;
+    spouseSection.classList.toggle('hidden', !isMarried);
+    spouseSection.setAttribute('aria-hidden', String(!isMarried));
+    spouseSection.querySelectorAll('input').forEach(input => {
+        input.disabled = !isMarried;
+        if (!isMarried && clearWhenHidden) input.value = '';
+    });
+    setInputRequired(['Spouse_First_Name', 'Spouse_Last_Name'], isMarried);
 }
 
 function buildPayload() {
     const employmentType = selectedEmploymentType();
+    const isMarried = value('Civil_Status') === 'M';
     return {
         registrant: {
             SS_Number: value('SS_Number'),
@@ -376,8 +401,8 @@ function buildPayload() {
             Employment_Type: employmentType
         },
         spouse: {
-            Spouse_Name: composeNameFromPrefix('Spouse'),
-            Spouse_DOB: value('Spouse_DOB')
+            Spouse_Name: isMarried ? composeNameFromPrefix('Spouse') : '',
+            Spouse_DOB: isMarried ? value('Spouse_DOB') : ''
         },
         children: collectRows(childrenList, 'child'),
         otherBeneficiaries: collectRows(otherBeneficiariesList, 'other'),
@@ -504,8 +529,40 @@ function validatePayload(payload) {
     if (payload.spouse.Spouse_DOB && isFutureDate(payload.spouse.Spouse_DOB)) {
         errors.push({ id: 'Spouse_DOB', message: 'Spouse date of birth cannot be in the future.' });
     }
+    if (r.Civil_Status === 'M') {
+        if (!value('Spouse_First_Name')) {
+            errors.push({ id: 'Spouse_First_Name', message: 'Spouse first name is required when civil status is married.' });
+        }
+        if (!value('Spouse_Last_Name')) {
+            errors.push({ id: 'Spouse_Last_Name', message: 'Spouse last name is required when civil status is married.' });
+        }
+    }
+
+    [...childrenList.querySelectorAll('.repeat-row'), ...otherBeneficiariesList.querySelectorAll('.repeat-row')].forEach((row, index) => {
+        const first = row.querySelector('[data-field="Ben_First_Name"]')?.value.trim();
+        const middle = row.querySelector('[data-field="Ben_Middle_Name"]')?.value.trim();
+        const last = row.querySelector('[data-field="Ben_Last_Name"]')?.value.trim();
+        const dob = row.querySelector('[data-field="Ben_DOB"]')?.value.trim();
+        const relationship = row.querySelector('[data-field="Ben_Relationship"]')?.value.trim();
+        const hasAnyValue = Boolean(first || middle || last || dob || relationship);
+        if (hasAnyValue && !first) {
+            errors.push({ id: row.querySelector('[data-field="Ben_First_Name"]')?.id || '', message: `Beneficiary row ${index + 1} needs a first name.` });
+        }
+        if (hasAnyValue && !last) {
+            errors.push({ id: row.querySelector('[data-field="Ben_Last_Name"]')?.id || '', message: `Beneficiary row ${index + 1} needs a last name.` });
+        }
+    });
 
     if (r.Employment_Type === 'SE') {
+        if (!payload.employmentDetails.SE_Profession) {
+            errors.push({ id: 'SE_Profession', message: 'Profession or business is required for self-employed records.' });
+        }
+        if (!payload.employmentDetails.SE_Year_Started) {
+            errors.push({ id: 'SE_Year_Started', message: 'Year started is required for self-employed records.' });
+        }
+        if (!payload.employmentDetails.SE_Monthly_Earnings) {
+            errors.push({ id: 'SE_Monthly_Earnings', message: 'Monthly earnings are required for self-employed records.' });
+        }
         if (payload.employmentDetails.SE_Year_Started && Number(payload.employmentDetails.SE_Year_Started) > new Date().getFullYear()) {
             errors.push({ id: 'SE_Year_Started', message: 'Self-employed year started cannot be in the future.' });
         }
@@ -513,11 +570,27 @@ function validatePayload(payload) {
             errors.push({ id: 'SE_Monthly_Earnings', message: 'Monthly earnings cannot be negative.' });
         }
     }
-    if (r.Employment_Type === 'OFW' && payload.employmentDetails.OFW_Monthly_Earnings && Number(payload.employmentDetails.OFW_Monthly_Earnings) < 0) {
-        errors.push({ id: 'OFW_Monthly_Earnings', message: 'OFW monthly earnings cannot be negative.' });
+    if (r.Employment_Type === 'OFW') {
+        if (!payload.employmentDetails.OFW_Foreign_Address) {
+            errors.push({ id: 'OFW_Foreign_Address', message: 'Foreign address is required for OFW records.' });
+        }
+        if (!payload.employmentDetails.OFW_Monthly_Earnings) {
+            errors.push({ id: 'OFW_Monthly_Earnings', message: 'Monthly earnings are required for OFW records.' });
+        }
+        if (payload.employmentDetails.OFW_Monthly_Earnings && Number(payload.employmentDetails.OFW_Monthly_Earnings) < 0) {
+            errors.push({ id: 'OFW_Monthly_Earnings', message: 'OFW monthly earnings cannot be negative.' });
+        }
     }
-    if (r.Employment_Type === 'NWS' && payload.employmentDetails.WS_Income && Number(payload.employmentDetails.WS_Income) < 0) {
-        errors.push({ id: 'WS_Income', message: 'Working spouse income cannot be negative.' });
+    if (r.Employment_Type === 'NWS') {
+        if (!payload.employmentDetails.WS_SSN) {
+            errors.push({ id: 'WS_SSN', message: 'Working spouse SS/Common Reference No. is required for non-working spouse records.' });
+        }
+        if (!payload.employmentDetails.WS_Income) {
+            errors.push({ id: 'WS_Income', message: 'Working spouse monthly income is required for non-working spouse records.' });
+        }
+        if (payload.employmentDetails.WS_Income && Number(payload.employmentDetails.WS_Income) < 0) {
+            errors.push({ id: 'WS_Income', message: 'Working spouse income cannot be negative.' });
+        }
     }
 
     return errors;
@@ -787,7 +860,7 @@ async function loadRecords(search = '') {
                 <div><dt>Sex</dt><dd>${formatSex(record.Sex)}</dd></div>
                 <div><dt>Status</dt><dd>${formatCivilStatus(record.Civil_Status)}</dd></div>
                 <div><dt>Type</dt><dd>${employmentLabel(record.Employment_Type)}</dd></div>
-                <div><dt>Beneficiaries</dt><dd>${Number(record.Beneficiary_Count || 0)}</dd></div>
+                <div><dt>Dependents/Ben.</dt><dd>${Number(record.Beneficiary_Count || 0)}</dd></div>
                 <div><dt>Updated</dt><dd>${formatDate(record.Updated_At)}</dd></div>
             </dl>
             <div class="record-actions">
@@ -826,8 +899,8 @@ function resetForm() {
     setValue('Address_Country', 'Philippines');
     childrenList.innerHTML = '';
     otherBeneficiariesList.innerHTML = '';
-    ensureInitialRows();
     updateEmploymentPanels();
+    updateSpouseSection();
     updateQualityPanel();
     updateRegistrantAge();
     setWizardStep(0);
@@ -897,6 +970,7 @@ function fillRandomInfo() {
     setValue('WS_Income', randomMoney(20000, 120000));
 
     updateEmploymentPanels();
+    updateSpouseSection();
     updateQualityPanel();
     updateRegistrantAge();
     clearValidation();
@@ -1363,14 +1437,15 @@ async function editRecord(ssNumber) {
 
     setNameParts('Spouse', record.spouse?.Spouse_Name || '');
     setValue('Spouse_DOB', isoDate(record.spouse?.Spouse_DOB));
+    updateSpouseSection({ clearWhenHidden: false });
 
     childrenList.innerHTML = '';
-    (record.children.length ? record.children : [{}]).forEach(child => {
+    record.children.forEach(child => {
         childrenList.appendChild(createPersonRow('child', child));
     });
 
     otherBeneficiariesList.innerHTML = '';
-    (record.otherBeneficiaries.length ? record.otherBeneficiaries : [{}]).forEach(beneficiary => {
+    record.otherBeneficiaries.forEach(beneficiary => {
         otherBeneficiariesList.appendChild(createPersonRow('other', beneficiary));
     });
 
@@ -1390,6 +1465,7 @@ async function editRecord(ssNumber) {
     document.getElementById('form-mode').textContent = `Editing ${r.SS_Number}`;
     document.getElementById('save-record').textContent = 'Update E-1 Record';
     updateEmploymentPanels();
+    updateSpouseSection({ clearWhenHidden: false });
     updateQualityPanel();
     updateRegistrantAge();
     setWizardStep(0);
@@ -1529,6 +1605,10 @@ themeToggle.addEventListener('click', () => {
 });
 document.getElementById('Date_of_Birth').addEventListener('change', updateRegistrantAge);
 document.getElementById('Date_of_Birth').addEventListener('input', updateRegistrantAge);
+document.getElementById('Civil_Status').addEventListener('change', () => {
+    updateSpouseSection();
+    updateQualityPanel();
+});
 wizardSteps?.addEventListener('click', event => {
     const button = event.target.closest('[data-step]');
     if (button) setWizardStep(Number(button.dataset.step));
