@@ -307,6 +307,98 @@ select {
     border-bottom-color: #a16207;
 }
 
+.validation-checklist {
+    display: grid;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-strong);
+}
+
+.validation-checklist > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.validation-checklist strong {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+}
+
+.validation-checklist span {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.validation-checklist ul {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.validation-checklist li {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-muted);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.validation-checklist li span {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    min-width: 24px;
+    height: 20px;
+    margin: 0;
+    border-radius: 999px;
+    background: var(--danger-bg);
+    color: var(--danger);
+    font-size: 0.66rem;
+}
+
+.validation-checklist li.is-done span {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.validation-checklist.checklist-complete {
+    border-bottom-color: var(--success);
+}
+
+.address-preview {
+    display: grid;
+    gap: 4px;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-soft);
+}
+
+.address-preview strong {
+    color: var(--muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+}
+
+.address-preview span {
+    color: var(--text);
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
 .wizard-shell {
     display: none;
     padding: 10px;
@@ -758,6 +850,10 @@ input[readonly] {
     color: var(--muted);
     font-size: 0.82rem;
     font-weight: 700;
+}
+
+.filter-input {
+    min-height: 36px;
 }
 
 .record-card dl {

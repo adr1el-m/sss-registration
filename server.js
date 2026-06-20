@@ -464,6 +464,11 @@ app.get('/api/e1-records', async (req, res) => {
         const sex = req.query.sex;
         const civil = req.query.civil;
         const quality = req.query.quality;
+        const location = req.query.location ? `%${req.query.location}%` : null;
+        const ageMin = Number(req.query.ageMin);
+        const ageMax = Number(req.query.ageMax);
+        const createdFrom = req.query.createdFrom;
+        const createdTo = req.query.createdTo;
         let query = `
             SELECT
                 r.SS_Number, r.Registrant_Name, r.Date_of_Birth, r.Sex, r.Civil_Status, r.TIN, r.Mobile_Number,
@@ -503,6 +508,26 @@ app.get('/api/e1-records', async (req, res) => {
         if (['S', 'M', 'W', 'LS', 'O'].includes(civil)) {
             where.push('r.Civil_Status = ?');
             params.push(civil);
+        }
+        if (location) {
+            where.push('r.Home_Address LIKE ?');
+            params.push(location);
+        }
+        if (Number.isFinite(ageMin) && ageMin >= 0) {
+            where.push('TIMESTAMPDIFF(YEAR, r.Date_of_Birth, CURDATE()) >= ?');
+            params.push(ageMin);
+        }
+        if (Number.isFinite(ageMax) && ageMax >= 0) {
+            where.push('TIMESTAMPDIFF(YEAR, r.Date_of_Birth, CURDATE()) <= ?');
+            params.push(ageMax);
+        }
+        if (createdFrom) {
+            where.push('DATE(s.Created_At) >= ?');
+            params.push(createdFrom);
+        }
+        if (createdTo) {
+            where.push('DATE(s.Created_At) <= ?');
+            params.push(createdTo);
         }
         if (status === 'archived') {
             where.push('COALESCE(s.Is_Archived, 0) = 1');

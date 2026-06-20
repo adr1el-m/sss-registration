@@ -7,11 +7,20 @@ const recordEmploymentFilter = document.getElementById('record-employment-filter
 const recordSexFilter = document.getElementById('record-sex-filter');
 const recordCivilFilter = document.getElementById('record-civil-filter');
 const recordQualityFilter = document.getElementById('record-quality-filter');
+const recordCityFilter = document.getElementById('record-city-filter');
+const recordAgeMinFilter = document.getElementById('record-age-min-filter');
+const recordAgeMaxFilter = document.getElementById('record-age-max-filter');
+const recordCreatedFromFilter = document.getElementById('record-created-from-filter');
+const recordCreatedToFilter = document.getElementById('record-created-to-filter');
 const childrenList = document.getElementById('children-list');
 const otherBeneficiariesList = document.getElementById('other-beneficiaries-list');
 const themeToggle = document.getElementById('theme-toggle');
 const themeToggleLabel = document.getElementById('theme-toggle-label');
 const validationErrors = document.getElementById('validation-errors');
+const validationChecklist = document.getElementById('validation-checklist');
+const validationChecklistSummary = document.getElementById('validation-checklist-summary');
+const validationChecklistList = document.getElementById('validation-checklist-list');
+const addressPreviewText = document.getElementById('address-preview-text');
 const qualityPanel = document.getElementById('quality-panel');
 const qualitySummary = document.getElementById('quality-summary');
 const qualityList = document.getElementById('quality-list');
@@ -614,9 +623,54 @@ function computeQualityWarnings(payload) {
     return warnings;
 }
 
+function validationChecklistItems(payload) {
+    const r = payload.registrant;
+    return [
+        { label: 'Generated SS number is present', done: Boolean(r.SS_Number) },
+        { label: 'Registrant first and last name are filled', done: Boolean(value('Registrant_First_Name') && value('Registrant_Last_Name')) },
+        { label: 'Date of birth, sex, and civil status are selected', done: Boolean(r.Date_of_Birth && r.Sex && r.Civil_Status) },
+        { label: 'Required address parts are complete', done: Boolean(value('Address_Barangay') && value('Address_City') && value('Address_Province') && value('Address_Zip')) },
+        { label: "Mother's maiden name is complete", done: Boolean(value('Mother_First_Name') && value('Mother_Last_Name')) },
+        { label: 'At least one dependent or beneficiary is listed', done: Boolean(payload.spouse.Spouse_Name || payload.children.length || payload.otherBeneficiaries.length) },
+        { label: 'Employment section matches the selected type', done: Boolean(
+            (r.Employment_Type === 'SE' && payload.employmentDetails.SE_Profession)
+            || (r.Employment_Type === 'OFW' && payload.employmentDetails.OFW_Foreign_Address)
+            || (r.Employment_Type === 'NWS' && payload.employmentDetails.WS_SSN)
+        ) },
+        { label: 'Contact details include mobile or email', done: Boolean(r.Mobile_Number || r.Email_Address) }
+    ];
+}
+
+function updateValidationChecklist(payload = buildPayload()) {
+    if (!validationChecklist) return;
+    const items = validationChecklistItems(payload);
+    const completed = items.filter(item => item.done).length;
+    validationChecklist.classList.toggle('checklist-complete', completed === items.length);
+    validationChecklistSummary.textContent = `${completed}/${items.length} complete`;
+    validationChecklistList.innerHTML = items.map(item => `
+        <li class="${item.done ? 'is-done' : 'is-open'}">
+            <span>${item.done ? 'OK' : '!'}</span>
+            ${escapeHtml(item.label)}
+        </li>
+    `).join('');
+}
+
+function updateAddressPreview() {
+    if (!addressPreviewText) return;
+    const requiredAddressComplete = value('Address_Barangay')
+        && value('Address_City')
+        && value('Address_Province')
+        && value('Address_Zip');
+    const formatted = composeHomeAddress();
+    addressPreviewText.textContent = requiredAddressComplete && formatted
+        ? formatted
+        : 'Complete barangay, city/municipality, province, and ZIP code.';
+}
+
 function updateQualityPanel() {
     if (!qualityPanel) return;
-    const warnings = computeQualityWarnings(buildPayload());
+    const payload = buildPayload();
+    const warnings = computeQualityWarnings(payload);
     const isClean = warnings.length === 0;
     qualityPanel.classList.toggle('quality-ok', isClean);
     qualityPanel.classList.toggle('quality-warning', !isClean);
@@ -624,6 +678,8 @@ function updateQualityPanel() {
     qualityList.innerHTML = isClean
         ? '<li>All key quality checks passed.</li>'
         : warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('');
+    updateValidationChecklist(payload);
+    updateAddressPreview();
 }
 
 async function checkDuplicateSsNumber(ssNumber) {
@@ -687,7 +743,7 @@ async function loadSummary() {
 function updateRecordsMode() {
     const isArchivePage = recordStatusFilter.value === 'archived';
     document.body.classList.toggle('archive-page-mode', isArchivePage);
-    document.getElementById('records-title').textContent = isArchivePage ? 'Archive Page' : 'Saved Records';
+    document.getElementById('records-title').textContent = isArchivePage ? 'Trash Page' : 'Saved Records';
 }
 
 async function loadRecords(search = '') {
@@ -699,6 +755,11 @@ async function loadRecords(search = '') {
     if (recordSexFilter.value) params.set('sex', recordSexFilter.value);
     if (recordCivilFilter.value) params.set('civil', recordCivilFilter.value);
     if (recordQualityFilter.value) params.set('quality', recordQualityFilter.value);
+    if (recordCityFilter.value) params.set('location', recordCityFilter.value);
+    if (recordAgeMinFilter.value) params.set('ageMin', recordAgeMinFilter.value);
+    if (recordAgeMaxFilter.value) params.set('ageMax', recordAgeMaxFilter.value);
+    if (recordCreatedFromFilter.value) params.set('createdFrom', recordCreatedFromFilter.value);
+    if (recordCreatedToFilter.value) params.set('createdTo', recordCreatedToFilter.value);
     updateRecordsMode();
     const records = await requestJson(`/api/e1-records?${params.toString()}`);
     document.getElementById('record-count').textContent = `${records.length} ${records.length === 1 ? 'record' : 'records'}`;
@@ -731,6 +792,7 @@ async function loadRecords(search = '') {
             </dl>
             <div class="record-actions">
                 <button type="button" class="btn btn-secondary" data-action="view">View</button>
+                ${needsReview ? '<button type="button" class="btn btn-secondary" data-action="issues">Issues</button>' : ''}
                 <button type="button" class="btn btn-secondary" data-action="pdf">PDF</button>
                 ${archived
                     ? '<button type="button" class="btn btn-secondary" data-action="restore">Restore</button>'
@@ -738,6 +800,7 @@ async function loadRecords(search = '') {
             </div>
         `;
         item.querySelector('[data-action="view"]').addEventListener('click', () => openRecordPreview(record.SS_Number));
+        item.querySelector('[data-action="issues"]')?.addEventListener('click', () => openReviewIssuesPanel(record.SS_Number));
         item.querySelector('[data-action="pdf"]').addEventListener('click', () => printRecordById(record.SS_Number));
         item.querySelector('[data-action="edit"]')?.addEventListener('click', () => editRecord(record.SS_Number));
         item.querySelector('[data-action="delete"]')?.addEventListener('click', () => archiveRecord(record.SS_Number));
@@ -967,6 +1030,33 @@ function renderRecordPreview(record) {
             ${renderQualityPreview(payload)}
         </section>
     `;
+}
+
+async function openReviewIssuesPanel(ssNumber) {
+    const record = await requestJson(`/api/e1-records/${encodeURIComponent(ssNumber)}`);
+    currentPreviewRecord = record;
+    const r = record.registrant || {};
+    const payload = recordToPayload(record);
+    const warnings = computeQualityWarnings(payload);
+    document.getElementById('detail-title').textContent = `Review Issues · ${r.SS_Number || ''}`;
+    detailContent.innerHTML = `
+        <section class="detail-hero">
+            <div>
+                <strong>${escapeHtml(r.Registrant_Name || 'E-1 Record')}</strong>
+                <span>${escapeHtml(r.SS_Number || '-')}</span>
+            </div>
+            <span class="status-pill ${warnings.length ? 'pill-warning' : 'pill-success'}">${warnings.length ? 'Needs Review' : 'Quality OK'}</span>
+        </section>
+        <section>
+            <h3>Review Issues Panel</h3>
+            ${renderQualityPreview(payload)}
+        </section>
+        <section>
+            <h3>Recommended Action</h3>
+            <p>${warnings.length ? 'Click Edit, complete the highlighted missing information, then save again.' : 'No review issues were found for this record.'}</p>
+        </section>
+    `;
+    detailModal.classList.remove('hidden');
 }
 
 function activityDetails(inputValue) {
@@ -1361,6 +1451,11 @@ function clearRecordFilters() {
     recordSexFilter.value = '';
     recordCivilFilter.value = '';
     recordQualityFilter.value = '';
+    recordCityFilter.value = '';
+    recordAgeMinFilter.value = '';
+    recordAgeMaxFilter.value = '';
+    recordCreatedFromFilter.value = '';
+    recordCreatedToFilter.value = '';
     recordSearch.value = '';
     loadRecords('').catch(error => showStatus(error.message, 'error'));
 }
@@ -1460,8 +1555,14 @@ recordSearch.addEventListener('input', () => loadRecords(recordSearch.value));
     recordEmploymentFilter,
     recordSexFilter,
     recordCivilFilter,
-    recordQualityFilter
+    recordQualityFilter,
+    recordCityFilter,
+    recordAgeMinFilter,
+    recordAgeMaxFilter,
+    recordCreatedFromFilter,
+    recordCreatedToFilter
 ].forEach(filter => {
+    filter.addEventListener('input', () => loadRecords(recordSearch.value));
     filter.addEventListener('change', () => loadRecords(recordSearch.value));
 });
 document.getElementById('clear-record-filters').addEventListener('click', clearRecordFilters);

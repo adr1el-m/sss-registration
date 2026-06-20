@@ -19,7 +19,7 @@
         <div class="header-actions">
             <button type="button" class="btn btn-secondary" id="random-fill">Fill Random</button>
             <button type="button" class="btn btn-secondary" id="print-form">Print/PDF</button>
-            <button type="button" class="btn btn-secondary" id="archive-page">Archive Page</button>
+            <button type="button" class="btn btn-secondary" id="archive-page">Trash Page</button>
             <button type="button" class="btn btn-secondary" id="activity-page">Activity Logs</button>
             <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
                 <span class="theme-toggle-icon" aria-hidden="true">DM</span>
@@ -76,6 +76,13 @@
                         <span id="quality-summary">Ready for review</span>
                     </div>
                     <ul id="quality-list"></ul>
+                </div>
+                <div class="validation-checklist" id="validation-checklist" aria-live="polite">
+                    <div>
+                        <strong>Validation Checklist</strong>
+                        <span id="validation-checklist-summary">0/0 complete</span>
+                    </div>
+                    <ul id="validation-checklist-list"></ul>
                 </div>
                 <div class="wizard-shell" aria-label="Mobile form steps">
                     <div class="wizard-steps" id="wizard-steps">
@@ -183,6 +190,10 @@
                             <span>ZIP Code</span>
                             <input id="Address_Zip" required inputmode="numeric" maxlength="10" placeholder="ZIP">
                         </label>
+                        <div class="address-preview span-4" id="address-preview">
+                            <strong>Formatted Address Preview</strong>
+                            <span id="address-preview-text">Complete the required address fields.</span>
+                        </div>
                         <label>
                             <span>Mobile/Cellphone Number</span>
                             <input id="Mobile_Number" name="Mobile_Number" maxlength="15" pattern="09[0-9]{9}" title="Use an 11-digit number starting with 09" placeholder="09XXXXXXXXX">
@@ -365,6 +376,11 @@
                     <option value="needs-review">Needs review</option>
                     <option value="ok">Quality OK</option>
                 </select>
+                <input id="record-city-filter" class="filter-input" placeholder="City / province">
+                <input id="record-age-min-filter" class="filter-input" type="number" min="0" max="120" placeholder="Min age">
+                <input id="record-age-max-filter" class="filter-input" type="number" min="0" max="120" placeholder="Max age">
+                <input id="record-created-from-filter" class="filter-input" type="date" aria-label="Created from">
+                <input id="record-created-to-filter" class="filter-input" type="date" aria-label="Created to">
                 <button type="button" class="btn btn-secondary" id="clear-record-filters">Clear Filters</button>
             </div>
             <input id="record-search" class="search-input" placeholder="Search name, SS number, phone, email, or address">
