@@ -15,6 +15,8 @@
     --accent-dark: #0000cc;
     --accent-alt: #2f80ed;
     --accent-text: #ffffff;
+    --section-header-bg: #e6f0ff;
+    --section-header-text: #102027;
     --danger: #c43a47;
     --danger-bg: rgba(255, 238, 240, 0.86);
     --success: #087a55;
@@ -42,6 +44,8 @@
     --accent-dark: #aaaaff;
     --accent-alt: #8fb7ff;
     --accent-text: #07110f;
+    --section-header-bg: rgba(0, 0, 255, 0.22);
+    --section-header-text: #f4f8ff;
     --danger: #ff8d98;
     --danger-bg: rgba(85, 31, 39, 0.66);
     --success: #72edbf;
@@ -495,8 +499,9 @@ body.user-mode .document-panel {
 
 .form-section h2 {
     padding: 8px 12px;
-    background: #e6f0ff;
+    background: var(--section-header-bg);
     border-bottom: 1px solid var(--line);
+    color: var(--section-header-text);
     text-align: center;
     text-transform: uppercase;
 }
@@ -506,13 +511,27 @@ body.user-mode .document-panel {
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-    background: #e6f0ff;
+    background: var(--section-header-bg);
     border-bottom: 1px solid var(--line);
+    color: var(--section-header-text);
 }
 
 .section-heading-row h2 {
     flex: 1;
+    background: transparent;
     border: 0;
+}
+
+.section-heading-row .inline-check {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: var(--section-header-text);
+    padding: 8px 12px;
+}
+
+.section-heading-row .inline-check span {
+    color: var(--section-header-text);
 }
 
 .form-grid {
