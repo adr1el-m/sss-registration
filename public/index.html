@@ -22,10 +22,14 @@
             </div>
         </div>
         <div class="header-actions">
-            <button type="button" class="btn btn-secondary" id="random-fill">Fill Random</button>
+            <div class="mode-toggle" role="group" aria-label="Application mode">
+                <button type="button" class="mode-toggle-button" data-mode-choice="user" aria-pressed="false">User Mode</button>
+                <button type="button" class="mode-toggle-button is-active" data-mode-choice="admin" aria-pressed="true">Admin Mode</button>
+            </div>
+            <button type="button" class="btn btn-secondary" id="random-fill" data-admin-only>Fill Random</button>
             <button type="button" class="btn btn-secondary" id="print-form">Print/PDF</button>
-            <button type="button" class="btn btn-secondary" id="archive-page">Trash Page</button>
-            <button type="button" class="btn btn-secondary" id="activity-page">Activity Logs</button>
+            <button type="button" class="btn btn-secondary" id="archive-page" data-admin-only>Trash Page</button>
+            <button type="button" class="btn btn-secondary" id="activity-page" data-admin-only>Activity Logs</button>
             <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
                 <span class="theme-toggle-icon" aria-hidden="true">DM</span>
                 <span id="theme-toggle-label">Dark Mode</span>
@@ -33,7 +37,7 @@
         </div>
     </header>
 
-    <section class="summary-grid" aria-label="Dashboard summary">
+    <section class="summary-grid" aria-label="Dashboard summary" data-admin-only>
         <article class="summary-card">
             <span>Total Active</span>
             <strong id="summary-active">0</strong>
@@ -341,7 +345,7 @@
             </form>
         </section>
 
-        <aside class="records-panel">
+        <aside class="records-panel" data-admin-only>
             <div class="records-header">
                 <div>
                     <h2 id="records-title">Saved Records</h2>

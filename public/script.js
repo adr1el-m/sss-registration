@@ -14,6 +14,7 @@ const recordCreatedFromFilter = document.getElementById('record-created-from-fil
 const recordCreatedToFilter = document.getElementById('record-created-to-filter');
 const childrenList = document.getElementById('children-list');
 const otherBeneficiariesList = document.getElementById('other-beneficiaries-list');
+const modeButtons = [...document.querySelectorAll('[data-mode-choice]')];
 const themeToggle = document.getElementById('theme-toggle');
 const themeToggleLabel = document.getElementById('theme-toggle-label');
 const validationErrors = document.getElementById('validation-errors');
@@ -42,6 +43,7 @@ let editingId = null;
 let pendingSave = null;
 let currentPreviewRecord = null;
 let currentWizardStep = 0;
+let currentAppMode = 'admin';
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
 
 const firstNames = ['Miguel', 'Maria', 'Juan', 'Teresa', 'Paolo', 'Isabella', 'Rafael', 'Carmen', 'Luisa', 'Antonio', 'Elena', 'Jose'];
@@ -280,6 +282,21 @@ function applyTheme(theme) {
     themeToggle.setAttribute('aria-pressed', String(isDark));
     themeToggleLabel.textContent = isDark ? 'Light Mode' : 'Dark Mode';
     localStorage.setItem('sss-e1-theme', theme);
+}
+
+function applyAppMode(mode, { refresh = false } = {}) {
+    currentAppMode = mode === 'user' ? 'user' : 'admin';
+    document.body.classList.toggle('user-mode', currentAppMode === 'user');
+    document.body.dataset.appMode = currentAppMode;
+    modeButtons.forEach(button => {
+        const isActive = button.dataset.modeChoice === currentAppMode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+    localStorage.setItem('sss-e1-mode', currentAppMode);
+    if (currentAppMode === 'admin' && refresh) {
+        refreshRecords().catch(error => showStatus(error.message, 'error'));
+    }
 }
 
 function createPersonRow(type, data = {}) {
@@ -1500,7 +1517,7 @@ async function saveConfirmedRecord() {
             body: JSON.stringify(pendingSave.payload)
         });
         closeReviewModal();
-        await refreshRecords();
+        if (currentAppMode === 'admin') await refreshRecords();
         resetForm();
         showStatus(saveMethod === 'POST' ? 'Record created.' : 'Record updated.', 'success');
     } catch (error) {
@@ -1600,6 +1617,9 @@ document.getElementById('random-fill').addEventListener('click', fillRandomInfo)
 document.getElementById('print-form').addEventListener('click', printForm);
 archivePage.addEventListener('click', openArchivePage);
 activityPage.addEventListener('click', openActivityLogs);
+modeButtons.forEach(button => {
+    button.addEventListener('click', () => applyAppMode(button.dataset.modeChoice, { refresh: true }));
+});
 themeToggle.addEventListener('click', () => {
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
@@ -1671,5 +1691,8 @@ window.addEventListener('afterprint', () => {
 
 attachSmartFormatting();
 resetForm();
+applyAppMode(localStorage.getItem('sss-e1-mode') || 'admin');
 applyTheme(localStorage.getItem('sss-e1-theme') || 'light');
-refreshRecords().catch(error => showStatus(error.message, 'error'));
+if (currentAppMode === 'admin') {
+    refreshRecords().catch(error => showStatus(error.message, 'error'));
+}
